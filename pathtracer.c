@@ -402,7 +402,7 @@ int main(int argc, char **argv)
 	MPI_Status status;
 	int nbProcess;
 	int rank;
-	MPI_Comm_size(MPI_COMM_WORLD, &nbProc);
+	MPI_Comm_size(MPI_COMM_WORLD, &nbProcess);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
 
