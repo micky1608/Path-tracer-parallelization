@@ -17,6 +17,7 @@
 #include <unistd.h>    /* pour getuid   */
 #include <sys/types.h> /* pour getpwuid */
 #include <pwd.h>       /* pour getpwuid */
+#include <time.h>
 
 
 enum Refl_t {DIFF, SPEC, REFR};   /* types de matériaux (DIFFuse, SPECular, REFRactive) */
@@ -348,6 +349,10 @@ int toInt(double x)
 
 int main(int argc, char **argv)
 { 
+	// Mesurer le temps d'execution
+	clock_t clock_begin, clock_end;
+	clock_begin = clock();
+
 	/* Petit cas test (small, quick and dirty): */
 	int w = 320;
 	int h = 200;
@@ -360,6 +365,8 @@ int main(int argc, char **argv)
 
 	if (argc == 2) 
 		samples = atoi(argv[1]) / 4;
+
+	
 
 	static const double CST = 0.5135;  /* ceci défini l'angle de vue */
 	double camera_position[3] = {50, 52, 295.6};
@@ -454,4 +461,13 @@ int main(int argc, char **argv)
 	}
 
 	free(image);
+
+	clock_end = clock();
+
+	double diff = (double)(clock_end - clock_begin) / CLOCKS_PER_SEC;
+	double sec;
+	int min;
+	min = diff / 60;
+	sec = diff - 60*min;
+	printf("Runtime execution : %d min %f seconds\n",min,sec);
 }
