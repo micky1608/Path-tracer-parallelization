@@ -166,7 +166,7 @@ bool intersect(const double *ray_origin, const double *ray_direction, double *t,
 	return *t < inf;
 } 
 
-/* calcule (dans out) la lumiance reçue par la camera sur le rayon donné */
+/* calcule (dans out) la luminance reçue par la camera sur le rayon donné */
 void radiance(const double *ray_origin, const double *ray_direction, int depth, unsigned short *PRNG_state, double *out)
 { 
 	int id = 0;                             // id de la sphère intersectée par le rayon
@@ -350,8 +350,8 @@ int toInt(double x)
 int main(int argc, char **argv)
 { 
 	// Mesurer le temps d'execution
-	clock_t clock_begin, clock_end;
-	clock_begin = clock();
+	double clock_begin, clock_end;
+	clock_begin = wtime();
 
 	/* Petit cas test (small, quick and dirty): */
 	int w = 320;
@@ -365,8 +365,6 @@ int main(int argc, char **argv)
 
 	if (argc == 2) 
 		samples = atoi(argv[1]) / 4;
-
-	
 
 	static const double CST = 0.5135;  /* ceci défini l'angle de vue */
 	double camera_position[3] = {50, 52, 295.6};
@@ -462,9 +460,9 @@ int main(int argc, char **argv)
 
 	free(image);
 
-	clock_end = clock();
+	clock_end = wtime();
 
-	double diff = (double)(clock_end - clock_begin) / CLOCKS_PER_SEC;
+	double diff = (clock_end - clock_begin);
 	double sec;
 	int min;
 	min = diff / 60;
