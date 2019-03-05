@@ -8,6 +8,7 @@
  */
 
 #define _XOPEN_SOURCE
+#include <mpi/mpi.h>
 #include <math.h>   
 #include <stdlib.h> 
 #include <stdio.h>
@@ -18,6 +19,9 @@
 #include <sys/types.h> /* pour getpwuid */
 #include <pwd.h>       /* pour getpwuid */
 #include <time.h>
+
+#define TAG_NUMPIXEL 69
+#define TAG_DATAPIXEL 42
 
 
 enum Refl_t {DIFF, SPEC, REFR};   /* types de matériaux (DIFFuse, SPECular, REFRactive) */
@@ -392,6 +396,15 @@ int main(int argc, char **argv)
 		}
 	}
 
+
+	MPI_Status status;
+	int nbProcess;
+	int rank;
+	MPI_Comm_size(MPI_COMM_WORLD, &nbProcess);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+
+
 	/* boucle principale */
 	double *image = malloc(3 * w * h * sizeof(*image));
 	if (image == NULL) {
@@ -399,12 +412,16 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
+	//Pour chaque ligne
 	for (int i = 0; i < h; i++) {
  		unsigned short PRNG_state[3] = {0, 0, i*i*i};
+		 //Pour chaque colonne
 		for (unsigned short j = 0; j < w; j++) {
 			/* calcule la luminance d'un pixel, avec sur-échantillonnage 2x2 */
 			double pixel_radiance[3] = {0, 0, 0};
+			//Pour chaque ligne de sous pixel
 			for (int sub_i = 0; sub_i < 2; sub_i++) {
+				//Pour chaque colonne de sous-pixel
 				for (int sub_j = 0; sub_j < 2; sub_j++) {
 					double subpixel_radiance[3] = {0, 0, 0};
 					/* simulation de monte-carlo : on effectue plein de lancers de rayons et on moyenne */
@@ -468,4 +485,6 @@ int main(int argc, char **argv)
 	min = diff / 60;
 	sec = diff - 60*min;
 	printf("Runtime execution : %d min %f seconds\n",min,sec);
+	MPI_Finalize();
+	return 0;
 }
