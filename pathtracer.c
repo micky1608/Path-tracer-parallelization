@@ -8,7 +8,7 @@
  */
 
 #define _XOPEN_SOURCE
-#include <mpi/mpi.h>
+#include <mpi.h>
 #include <math.h>   
 #include <stdlib.h> 
 #include <stdio.h>
@@ -20,9 +20,8 @@
 #include <pwd.h>       /* pour getpwuid */
 #include <time.h>
 
-#define TAG_NUMPIXEL 69
-#define TAG_DATAPIXEL 42
-
+#define SIZE_BLOCK 128	// nombre de pixels contenus dans un bloc
+#define SIZE_PIXEL 3*sizeof(double)
 
 enum Refl_t {DIFF, SPEC, REFR};   /* types de matériaux (DIFFuse, SPECular, REFRactive) */
 
@@ -360,7 +359,7 @@ int main(int argc, char **argv)
 	/* Petit cas test (small, quick and dirty): */
 	int w = 320;
 	int h = 200;
-	int samples = 200;
+	int samples = 2;
 
 	/* Gros cas test (big, slow and pretty): */
 	/* int w = 3840; */
@@ -396,26 +395,77 @@ int main(int argc, char **argv)
 		}
 	}
 
-
+	MPI_Init(&argc,&argv);
 	MPI_Status status;
 	int nbProcess;
 	int rank;
 	MPI_Comm_size(MPI_COMM_WORLD, &nbProcess);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+		/* Initialisation des variables de division des données*/
+	
+	// nombre total de blocs 
+	int nb_bloc = ceil((double)(w*h) / SIZE_BLOCK);
 
+	// nombre de blocs par processus
+	int nb_bloc_local = ceil(nb_bloc / nbProcess);
 
-	/* boucle principale */
-	double *image = malloc(3 * w * h * sizeof(*image));
-	if (image == NULL) {
-		perror("Impossible d'allouer l'image");
-		exit(1);
+	int h_local = ceil((SIZE_BLOCK*nb_bloc_local)/w);
+	
+	// on equilibre les blocs entre les processus
+	if(rank < nb_bloc - (nb_bloc_local * nbProcess)) {
+		nb_bloc_local++;
 	}
 
+	if(rank == 0) {
+		printf("h : %d pixels\tw : %d pixels\n",h,w);
+		printf("nb pixels : %d\n",w*h);
+		printf("nb bloc : %d\n",nb_bloc);
+		printf("local_h : %d lignes\n",h_local);
+	}
+	
+	printf("Process %d : nb_bloc_local = %d\n",rank , nb_bloc_local);
+
+	// on stocke les indices des premiers pixels des blocs supplémentaires calculés
+	int *pixel_sup;
+
+	// le nombre de blocs supplémentaires calculés
+	int nb_sup = 0;
+
+	// tampon mémoire pour l'image
+	double *image , *image_sup;
+
+		/* Allocation mémoire */
+
+	if(rank == 0) {
+		// allocation de l'image totale
+		image = malloc(nb_bloc * SIZE_BLOCK * SIZE_PIXEL);
+
+		// pas de blocs supplementaires
+		image_sup = NULL;
+	}
+	else {
+		pixel_sup = malloc(nb_bloc_local * sizeof(int));
+
+		if (pixel_sup == NULL) { perror("Impossible d'allouer le tableau des numeros de blocs supplementaires"); exit(1); }
+
+		// allocation d'un tampon principal
+		image = malloc(nb_bloc_local * SIZE_BLOCK * SIZE_PIXEL);
+
+		// allocation d'un tampon supplémentaire 
+		image_sup = malloc(nb_bloc_local * SIZE_BLOCK * SIZE_PIXEL);
+
+		if (image_sup == NULL) { perror("Impossible d'allouer le tampon supplémentaire"); exit(1); }
+	}
+
+	if (image == NULL) { perror("Impossible d'allouer l'image"); exit(1); }
+
 	//Pour chaque ligne
-	for (int i = 0; i < h; i++) {
+	for (int i = 0; i < h_local; i++) {
  		unsigned short PRNG_state[3] = {0, 0, i*i*i};
+		 
 		 //Pour chaque colonne
+		 // !!! INDICE A CHANGER !!!
 		for (unsigned short j = 0; j < w; j++) {
 			/* calcule la luminance d'un pixel, avec sur-échantillonnage 2x2 */
 			double pixel_radiance[3] = {0, 0, 0};
@@ -452,12 +502,35 @@ int main(int argc, char **argv)
 					axpy(0.25, subpixel_radiance, pixel_radiance);
 				}
 			}
-			copy(pixel_radiance, image + 3 * ((h - 1 - i) * w + j)); // <-- retournement vertical
+			copy(pixel_radiance, image + 3 * ((h_local - 1 - i) * w + j)); 
+			//copy(pixel_radiance, image + 3 * ((h - 1 - i) * w + j)); // <-- retournement vertical
+
+			//for(int i=0 ; i<rank ; i++) printf("\t");
+			//printf("Process %d -> Calcul du pixel (%d,%d) done !!\n",rank,i,j);
 		}
 	}
 	fprintf(stderr, "\n");
 
+	/* ************************************************************************************** */
+	// TEST : Cette partie devra etre changee 
+	/* ************************************************************************************** */
+
+	int tag = 15;
+
+	if (rank == 0) {
+		for(int source = 1 ; source < nbProcess ; source++) {
+			MPI_Recv(image + 3*nb_bloc_local*SIZE_BLOCK*source , 3*nb_bloc_local*SIZE_BLOCK , MPI_DOUBLE , source , tag , MPI_COMM_WORLD,&status);
+		}
+	}
+	else {
+		MPI_Send(image , 3*nb_bloc_local*SIZE_BLOCK , MPI_DOUBLE , 0 , tag , MPI_COMM_WORLD);
+	}
+
+
+	/* ************************************************************************************** */
+
 	/* stocke l'image dans un fichier au format NetPbm */
+	if(rank == 0) 
 	{
 		struct passwd *pass; 
 		char nom_sortie[100] = "";
@@ -475,16 +548,24 @@ int main(int argc, char **argv)
 		fclose(f); 
 	}
 
+	/* Libération des ressources */
 	free(image);
+	if(rank != 0) {
+		free(image_sup);
+		free(pixel_sup);
+	}
 
+	/* Fin du chronomètre */
 	clock_end = wtime();
 
+	/* Affichage du temps d'execution */
 	double diff = (clock_end - clock_begin);
 	double sec;
 	int min;
 	min = diff / 60;
 	sec = diff - 60*min;
-	printf("Runtime execution : %d min %f seconds\n",min,sec);
+	printf("Runtime execution process %d: %d min %f seconds\n",rank,min,sec);
+
 	MPI_Finalize();
 	return 0;
 }

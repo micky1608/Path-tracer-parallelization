@@ -1,10 +1,12 @@
-CC=gcc -Wall -O3
+CC=mpicc -Wall -O3
 
 CFLAGS=-Iinc
 
 LDFLAGS=-lm 
 
 BIN=pathtracer
+
+NB_PROC=2
 
 all : $(BIN)
 
@@ -14,6 +16,7 @@ all : $(BIN)
 clean :
 	rm -f $(BIN) *.o *~
 
-
+exec :
+	mpirun -n $(NB_PROC) ./$(BIN)
 
 
