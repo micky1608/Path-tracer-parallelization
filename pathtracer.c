@@ -359,7 +359,7 @@ int main(int argc, char **argv)
 	/* Petit cas test (small, quick and dirty): */
 	int w = 320;
 	int h = 200;
-	int samples = 2;
+	int samples = 100;
 
 	/* Gros cas test (big, slow and pretty): */
 	/* int w = 3840; */
@@ -460,13 +460,36 @@ int main(int argc, char **argv)
 
 	if (image == NULL) { perror("Impossible d'allouer l'image"); exit(1); }
 
+/* ****************************************************************************************************************** */
+// Boucle principale 
+/* ****************************************************************************************************************** */
+
+	printf("\nProcess %d : work in progress ...\n",rank);
+
+	// définition des indices des pixels dans la sous image locale
+	int i,j;
+
+	// definition des indices dans l'image globale
+	int x,y;
+
+	// pour chaque pixel de son bloc de données
+	for(int k=0 ; k<nb_bloc_local*SIZE_BLOCK ; k++) {
+		
+		// calcul des indices locaux i et j 
+		i = k / w;
+		j = k % w;
+
+		// calcul des indices globaux x et y
+		// pour avoir l'image dans le bon sens, on affecte les blocs en partant du haut de l'image
+		x = i + (nbProcess - rank - 1) * h_local;
+		y = j;
+	
 	//Pour chaque ligne
-	for (int i = 0; i < h_local; i++) {
- 		unsigned short PRNG_state[3] = {0, 0, i*i*i};
-		 
+//	for (int i = 0; i < h_local; i++) {
+		unsigned short PRNG_state[3] = {0, 0, i*i*i};
 		 //Pour chaque colonne
-		 // !!! INDICE A CHANGER !!!
-		for (unsigned short j = 0; j < w; j++) {
+//		for (unsigned short j = 0; j < w; j++) {
+
 			/* calcule la luminance d'un pixel, avec sur-échantillonnage 2x2 */
 			double pixel_radiance[3] = {0, 0, 0};
 			//Pour chaque ligne de sous pixel
@@ -474,6 +497,7 @@ int main(int argc, char **argv)
 				//Pour chaque colonne de sous-pixel
 				for (int sub_j = 0; sub_j < 2; sub_j++) {
 					double subpixel_radiance[3] = {0, 0, 0};
+
 					/* simulation de monte-carlo : on effectue plein de lancers de rayons et on moyenne */
 					for (int s = 0; s < samples; s++) { 
 						/* tire un rayon aléatoire dans une zone de la caméra qui correspond à peu près au pixel à calculer */
@@ -483,8 +507,13 @@ int main(int argc, char **argv)
 						double dy = (r2 < 1) ? sqrt(r2) - 1 : 1 - sqrt(2 - r2);
 						double ray_direction[3];
 						copy(camera_direction, ray_direction);
-						axpy(((sub_i + .5 + dy) / 2 + i) / h - .5, cy, ray_direction);
-						axpy(((sub_j + .5 + dx) / 2 + j) / w - .5, cx, ray_direction);
+
+						// anciennes lignes ligne 
+						// axpy(((sub_i + .5 + dy) / 2 + i) / h - .5, cy, ray_direction);
+						// axpy(((sub_j + .5 + dx) / 2 + j) / w - .5, cx, ray_direction);
+
+						axpy(((sub_i + .5 + dy) / 2 + x) / h - .5, cy, ray_direction);
+						axpy(((sub_j + .5 + dx) / 2 + y) / w - .5, cx, ray_direction);
 						normalize(ray_direction);
 
 						double ray_origin[3];
@@ -502,13 +531,20 @@ int main(int argc, char **argv)
 					axpy(0.25, subpixel_radiance, pixel_radiance);
 				}
 			}
-			copy(pixel_radiance, image + 3 * ((h_local - 1 - i) * w + j)); 
-			//copy(pixel_radiance, image + 3 * ((h - 1 - i) * w + j)); // <-- retournement vertical
 
+			// ancienne ligne
+			// copy(pixel_radiance, image + 3 * ((h - 1 - i) * w + j)); // <-- retournement vertical
+
+			copy(pixel_radiance, image + 3 * ((h_local - 1 - i) * w + j)); 
+			
 			//for(int i=0 ; i<rank ; i++) printf("\t");
 			//printf("Process %d -> Calcul du pixel (%d,%d) done !!\n",rank,i,j);
-		}
-	}
+
+//		} // for j
+//	} // for i
+
+	} // for k
+
 	fprintf(stderr, "\n");
 
 	/* ************************************************************************************** */
