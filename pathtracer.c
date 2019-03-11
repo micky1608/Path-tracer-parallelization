@@ -359,7 +359,7 @@ int main(int argc, char **argv)
 	/* Petit cas test (small, quick and dirty): */
 	int w = 320;
 	int h = 200;
-	int samples = 100;
+	int samples = 10;
 
 	/* Gros cas test (big, slow and pretty): */
 	/* int w = 3840; */
@@ -410,12 +410,12 @@ int main(int argc, char **argv)
 	// nombre de blocs par processus
 	int nb_bloc_local = ceil(nb_bloc / nbProcess);
 
-	int h_local = ceil((SIZE_BLOCK*nb_bloc_local)/w);
-	
 	// on equilibre les blocs entre les processus
 	if(rank < nb_bloc - (nb_bloc_local * nbProcess)) {
 		nb_bloc_local++;
 	}
+
+	int h_local = ceil((SIZE_BLOCK*nb_bloc_local)/w);
 
 	if(rank == 0) {
 		printf("h : %d pixels\tw : %d pixels\n",h,w);
@@ -423,8 +423,8 @@ int main(int argc, char **argv)
 		printf("nb bloc : %d\n",nb_bloc);
 		printf("local_h : %d lignes\n",h_local);
 	}
-	
-	printf("Process %d : nb_bloc_local = %d\n",rank , nb_bloc_local);
+
+	printf("Process %d : nb_bloc_local = %d\th_local = %d\n",rank , nb_bloc_local,h_local);
 
 	// on stocke les indices des premiers pixels des blocs supplémentaires calculés
 	int *pixel_sup;
@@ -481,8 +481,11 @@ int main(int argc, char **argv)
 
 		// calcul des indices globaux x et y
 		// pour avoir l'image dans le bon sens, on affecte les blocs en partant du haut de l'image
+		
+		// !!!!!!!! on a un probleme du fait que le nombre de blocs peut legerement varier en fonction du processus !!!!!!!!!!
 		x = i + (nbProcess - rank - 1) * h_local;
 		y = j;
+
 	
 	//Pour chaque ligne
 //	for (int i = 0; i < h_local; i++) {
