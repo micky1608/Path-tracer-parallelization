@@ -415,13 +415,12 @@ int main(int argc, char **argv)
 		nb_bloc_local++;
 	}
 
-	int h_local = ceil((SIZE_BLOCK*nb_bloc_local)/w);
+	// int h_local = ceil((SIZE_BLOCK*nb_bloc_local)/w);
 
 	if(rank == 0) {
 		printf("h : %d pixels\tw : %d pixels\n",h,w);
 		printf("nb pixels : %d\n",w*h);
 		printf("nb bloc : %d\n",nb_bloc);
-		//printf("local_h : %d lignes\n",h_local);
 	}
 
 	//printf("Process %d : nb_bloc_local = %d\th_local = %d\n",rank , nb_bloc_local,h_local);
@@ -435,6 +434,10 @@ int main(int argc, char **argv)
 
 	// tampon mémoire pour l'image
 	double *image , *image_sup;
+
+	// tableau pour contenir le nombre de blocs initialement affectés a chaque processus
+	int *nb_bloc_locaux;
+
 
 		/* Allocation mémoire */
 
@@ -461,6 +464,13 @@ int main(int argc, char **argv)
 
 	if (image == NULL) { perror("Impossible d'allouer l'image"); exit(1); }
 
+	nb_bloc_locaux = (int*)malloc(nbProcess*sizeof(int));
+
+	MPI_Allgather(&nb_bloc_local , 1 , MPI_INT , nb_bloc_locaux , 1 , MPI_INT , MPI_COMM_WORLD);
+
+	for(int l=0 ; l<nbProcess ; l++) printf("%d ",nb_bloc_locaux[l]);
+	printf("\n");
+
 /* ****************************************************************************************************************** */
 // Boucle principale 
 /* ****************************************************************************************************************** */
@@ -468,25 +478,33 @@ int main(int argc, char **argv)
 	printf("\nProcess %d : work in progress ...\n",rank);
 
 	// définition des indices des pixels dans la sous image locale
-	int i,j;
+	//int i,j;
 
 	// definition des indices dans l'image globale
 	int x,y;
+
+	int nb_bloc_precedent = 0;
+	for(int l=0 ; l<rank ; l++) nb_bloc_precedent += nb_bloc_locaux[l];
+
+	printf("\nProcess %d : nb_bloc_precedent = %d\n",rank,nb_bloc_precedent);
 
 	// pour chaque pixel de son bloc de données
 	for(int k=0 ; k<nb_bloc_local*SIZE_BLOCK ; k++) {
 		
 		// calcul des indices locaux i et j 
-		i = k / w;
-		j = k % w;
+		//i = k / w;
+		//j = k % w;
 
 		// calcul des indices globaux x et y
 	
 		//x = (k + (nb_bloc_local * SIZE_BLOCK)*(nbProcess - rank - 1)) / w;
 		//y = (k + (nb_bloc_local * SIZE_BLOCK)*(nbProcess - rank - 1)) % w;
 
-		x = (k + (nb_bloc_local * SIZE_BLOCK)*rank) / w;
-		y = (k + (nb_bloc_local * SIZE_BLOCK)*rank) % w;
+		x = (k + (nb_bloc_precedent * SIZE_BLOCK)) / w;
+		y = (k + (nb_bloc_precedent * SIZE_BLOCK)) % w;
+
+		//for(int l=0 ; l<rank ; l++) printf("\t\t");
+		//printf("(%d,%d)\n",x,y);
 
 
 	//Pour chaque ligne
@@ -565,13 +583,13 @@ int main(int argc, char **argv)
 	if (rank == 0) {
 		int offset = 3*nb_bloc_local*SIZE_BLOCK;
 		for(int source = 1 ; source < nbProcess ; source++) {
-			MPI_Recv(&nb , 1 , MPI_INT , source , tag_number_block , MPI_COMM_WORLD,&status);
-			MPI_Recv(image + offset , 3*nb*SIZE_BLOCK , MPI_DOUBLE , source , tag_data , MPI_COMM_WORLD,&status);
-			offset +=  3*nb*SIZE_BLOCK;
+			//MPI_Recv(&nb , 1 , MPI_INT , source , tag_number_block , MPI_COMM_WORLD,&status);
+			MPI_Recv(image + offset , 3*nb_bloc_locaux[source]*SIZE_BLOCK , MPI_DOUBLE , source , tag_data , MPI_COMM_WORLD,&status);
+			offset +=  3*nb_bloc_locaux[source]*SIZE_BLOCK;
 		}
 	}
 	else {
-		MPI_Send(&nb_bloc_local , 1 , MPI_INT , 0 , tag_number_block , MPI_COMM_WORLD);
+		//MPI_Send(&nb_bloc_local , 1 , MPI_INT , 0 , tag_number_block , MPI_COMM_WORLD);
 		MPI_Send(image , 3*nb_bloc_local*SIZE_BLOCK , MPI_DOUBLE , 0 , tag_data , MPI_COMM_WORLD);
 	}
 
@@ -609,6 +627,7 @@ int main(int argc, char **argv)
 
 	/* Libération des ressources */
 	free(image);
+	free(nb_bloc_locaux);
 	if(rank != 0) {
 		free(image_sup);
 		free(pixel_sup);
