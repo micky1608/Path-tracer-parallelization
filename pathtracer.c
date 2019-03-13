@@ -421,10 +421,11 @@ int main(int argc, char **argv)
 		printf("h : %d pixels\tw : %d pixels\n",h,w);
 		printf("nb pixels : %d\n",w*h);
 		printf("nb bloc : %d\n",nb_bloc);
-		printf("local_h : %d lignes\n",h_local);
+		//printf("local_h : %d lignes\n",h_local);
 	}
 
-	printf("Process %d : nb_bloc_local = %d\th_local = %d\n",rank , nb_bloc_local,h_local);
+	//printf("Process %d : nb_bloc_local = %d\th_local = %d\n",rank , nb_bloc_local,h_local);
+	printf("Process %d : nb_bloc_local = %d\n",rank , nb_bloc_local);
 
 	// on stocke les indices des premiers pixels des blocs supplémentaires calculés
 	int *pixel_sup;
@@ -480,16 +481,20 @@ int main(int argc, char **argv)
 		j = k % w;
 
 		// calcul des indices globaux x et y
-		// pour avoir l'image dans le bon sens, on affecte les blocs en partant du haut de l'image
-		
-		// !!!!!!!! on a un probleme du fait que le nombre de blocs peut legerement varier en fonction du processus !!!!!!!!!!
-		x = i + (nbProcess - rank - 1) * h_local;
-		y = j;
-
 	
+		//x = (k + (nb_bloc_local * SIZE_BLOCK)*(nbProcess - rank - 1)) / w;
+		//y = (k + (nb_bloc_local * SIZE_BLOCK)*(nbProcess - rank - 1)) % w;
+
+		x = (k + (nb_bloc_local * SIZE_BLOCK)*rank) / w;
+		y = (k + (nb_bloc_local * SIZE_BLOCK)*rank) % w;
+
+
 	//Pour chaque ligne
 //	for (int i = 0; i < h_local; i++) {
-		unsigned short PRNG_state[3] = {0, 0, i*i*i};
+
+		//unsigned short PRNG_state[3] = {0, 0, i*i*i};
+		unsigned short PRNG_state[3] = {0, 0, x*x*x};
+
 		 //Pour chaque colonne
 //		for (unsigned short j = 0; j < w; j++) {
 
@@ -535,14 +540,14 @@ int main(int argc, char **argv)
 				}
 			}
 
-			// ancienne ligne
+			// ligne originale 
 			// copy(pixel_radiance, image + 3 * ((h - 1 - i) * w + j)); // <-- retournement vertical
 
-			copy(pixel_radiance, image + 3 * ((h_local - 1 - i) * w + j)); 
+			// On gère le retournement vertical au moment de la sauvegarde de l'image car notre division 
+			// en blocs ne tombre pas forcement sur la fin d'une ligne
+			copy(pixel_radiance, image + 3*k);
 			
-			//for(int i=0 ; i<rank ; i++) printf("\t");
-			//printf("Process %d -> Calcul du pixel (%d,%d) done !!\n",rank,i,j);
-
+			
 //		} // for j
 //	} // for i
 
@@ -554,21 +559,28 @@ int main(int argc, char **argv)
 	// TEST : Cette partie devra etre changee 
 	/* ************************************************************************************** */
 
-	int tag = 15;
+	int tag_number_block = 12 , tag_data = 15, nb;
+	
 
 	if (rank == 0) {
+		int offset = 3*nb_bloc_local*SIZE_BLOCK;
 		for(int source = 1 ; source < nbProcess ; source++) {
-			MPI_Recv(image + 3*nb_bloc_local*SIZE_BLOCK*source , 3*nb_bloc_local*SIZE_BLOCK , MPI_DOUBLE , source , tag , MPI_COMM_WORLD,&status);
+			MPI_Recv(&nb , 1 , MPI_INT , source , tag_number_block , MPI_COMM_WORLD,&status);
+			MPI_Recv(image + offset , 3*nb*SIZE_BLOCK , MPI_DOUBLE , source , tag_data , MPI_COMM_WORLD,&status);
+			offset +=  3*nb*SIZE_BLOCK;
 		}
 	}
 	else {
-		MPI_Send(image , 3*nb_bloc_local*SIZE_BLOCK , MPI_DOUBLE , 0 , tag , MPI_COMM_WORLD);
+		MPI_Send(&nb_bloc_local , 1 , MPI_INT , 0 , tag_number_block , MPI_COMM_WORLD);
+		MPI_Send(image , 3*nb_bloc_local*SIZE_BLOCK , MPI_DOUBLE , 0 , tag_data , MPI_COMM_WORLD);
 	}
 
 
 	/* ************************************************************************************** */
 
-	/* stocke l'image dans un fichier au format NetPbm */
+	/* Stocke l'image dans un fichier au format NetPbm 
+	* !!!!! L'image doit etre retourné verticalement !!!!!
+	*/
 	if(rank == 0) 
 	{
 		struct passwd *pass; 
@@ -582,8 +594,16 @@ int main(int argc, char **argv)
 		
 		FILE *f = fopen(nom_sortie, "w");
 		fprintf(f, "P3\n%d %d\n%d\n", w, h, 255); 
-		for (int i = 0; i < w * h; i++) 
-	  		fprintf(f,"%d %d %d ", toInt(image[3 * i]), toInt(image[3 * i + 1]), toInt(image[3 * i + 2])); 
+		for (int i = 0; i < w * h; i++) {
+			// ligne originale 
+			// fprintf(f,"%d %d %d ", toInt(image[3 * i]), toInt(image[3 * i + 1]), toInt(image[3 * i + 2]));
+			
+			int new_line = h - (i/w) - 1;
+			int p = new_line * w + (i%w);
+
+			fprintf(f,"%d %d %d ", toInt(image[3 * p]), toInt(image[3 * p + 1]), toInt(image[3 * p + 2]));
+		}
+	  		 
 		fclose(f); 
 	}
 
