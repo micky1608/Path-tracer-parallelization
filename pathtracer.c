@@ -468,17 +468,11 @@ int main(int argc, char **argv)
 
 	MPI_Allgather(&nb_bloc_local , 1 , MPI_INT , nb_bloc_locaux , 1 , MPI_INT , MPI_COMM_WORLD);
 
-	for(int l=0 ; l<nbProcess ; l++) printf("%d ",nb_bloc_locaux[l]);
-	printf("\n");
-
 /* ****************************************************************************************************************** */
 // Boucle principale 
 /* ****************************************************************************************************************** */
 
 	printf("\nProcess %d : work in progress ...\n",rank);
-
-	// définition des indices des pixels dans la sous image locale
-	//int i,j;
 
 	// definition des indices dans l'image globale
 	int x,y;
@@ -491,15 +485,7 @@ int main(int argc, char **argv)
 	// pour chaque pixel de son bloc de données
 	for(int k=0 ; k<nb_bloc_local*SIZE_BLOCK ; k++) {
 		
-		// calcul des indices locaux i et j 
-		//i = k / w;
-		//j = k % w;
-
 		// calcul des indices globaux x et y
-	
-		//x = (k + (nb_bloc_local * SIZE_BLOCK)*(nbProcess - rank - 1)) / w;
-		//y = (k + (nb_bloc_local * SIZE_BLOCK)*(nbProcess - rank - 1)) % w;
-
 		x = (k + (nb_bloc_precedent * SIZE_BLOCK)) / w;
 		y = (k + (nb_bloc_precedent * SIZE_BLOCK)) % w;
 
@@ -534,7 +520,7 @@ int main(int argc, char **argv)
 						double ray_direction[3];
 						copy(camera_direction, ray_direction);
 
-						// anciennes lignes ligne 
+						// anciennes lignes  
 						// axpy(((sub_i + .5 + dy) / 2 + i) / h - .5, cy, ray_direction);
 						// axpy(((sub_j + .5 + dx) / 2 + j) / w - .5, cx, ray_direction);
 
@@ -577,19 +563,17 @@ int main(int argc, char **argv)
 	// TEST : Cette partie devra etre changee 
 	/* ************************************************************************************** */
 
-	int tag_number_block = 12 , tag_data = 15, nb;
+	int tag_data = 15;
 	
 
 	if (rank == 0) {
 		int offset = 3*nb_bloc_local*SIZE_BLOCK;
 		for(int source = 1 ; source < nbProcess ; source++) {
-			//MPI_Recv(&nb , 1 , MPI_INT , source , tag_number_block , MPI_COMM_WORLD,&status);
 			MPI_Recv(image + offset , 3*nb_bloc_locaux[source]*SIZE_BLOCK , MPI_DOUBLE , source , tag_data , MPI_COMM_WORLD,&status);
 			offset +=  3*nb_bloc_locaux[source]*SIZE_BLOCK;
 		}
 	}
 	else {
-		//MPI_Send(&nb_bloc_local , 1 , MPI_INT , 0 , tag_number_block , MPI_COMM_WORLD);
 		MPI_Send(image , 3*nb_bloc_local*SIZE_BLOCK , MPI_DOUBLE , 0 , tag_data , MPI_COMM_WORLD);
 	}
 
