@@ -20,8 +20,14 @@
 #include <pwd.h>       /* pour getpwuid */
 #include <time.h>
 
-#define SIZE_BLOCK 128	// nombre de pixels contenus dans un bloc
+#define SIZE_BLOCK 32	// nombre de pixels contenus dans un bloc
 #define SIZE_PIXEL 3*sizeof(double)
+
+//TAGS
+#define TAG_NEED_DATA_PLEASE 10
+#define TAG_YEP 11
+#define TAG_NOPE 12
+#define TAG_DATA 42
 
 enum Refl_t {DIFF, SPEC, REFR};   /* types de matériaux (DIFFuse, SPECular, REFRactive) */
 
@@ -359,7 +365,7 @@ int main(int argc, char **argv)
 	/* Petit cas test (small, quick and dirty): */
 	int w = 320;
 	int h = 200;
-	int samples = 10;
+	int samples = 50;
 
 	/* Gros cas test (big, slow and pretty): */
 	/* int w = 3840; */
@@ -472,7 +478,7 @@ int main(int argc, char **argv)
 // Boucle principale 
 /* ****************************************************************************************************************** */
 
-	printf("\nProcess %d : work in progress ...\n",rank);
+	printf("Process %d : work in progress ...\n",rank);
 
 	// definition des indices dans l'image globale
 	int x,y;
@@ -480,84 +486,100 @@ int main(int argc, char **argv)
 	int nb_bloc_precedent = 0;
 	for(int l=0 ; l<rank ; l++) nb_bloc_precedent += nb_bloc_locaux[l];
 
-	printf("\nProcess %d : nb_bloc_precedent = %d\n",rank,nb_bloc_precedent);
-
-	// pour chaque pixel de son bloc de données
-	for(int k=0 ; k<nb_bloc_local*SIZE_BLOCK ; k++) {
-		
-		// calcul des indices globaux x et y
-		x = (k + (nb_bloc_precedent * SIZE_BLOCK)) / w;
-		y = (k + (nb_bloc_precedent * SIZE_BLOCK)) % w;
-
-		//for(int l=0 ; l<rank ; l++) printf("\t\t");
-		//printf("(%d,%d)\n",x,y);
+	printf("Process %d : nb_bloc_precedent = %d\n",rank,nb_bloc_precedent);
 
 
-	//Pour chaque ligne
-//	for (int i = 0; i < h_local; i++) {
 
-		//unsigned short PRNG_state[3] = {0, 0, i*i*i};
-		unsigned short PRNG_state[3] = {0, 0, x*x*x};
+	// Pour chaque bloc
+	for(int b=0; b<nb_bloc_local; b++)
+	{
+		// pour chaque pixel de son bloc de données
+		for(int k=b*SIZE_BLOCK ; k<(b+1)*SIZE_BLOCK ; k++) {
+			
+			// calcul des indices globaux x et y
+			x = (k + (nb_bloc_precedent * SIZE_BLOCK)) / w;
+			y = (k + (nb_bloc_precedent * SIZE_BLOCK)) % w;
 
-		 //Pour chaque colonne
-//		for (unsigned short j = 0; j < w; j++) {
+			//for(int l=0 ; l<rank ; l++) printf("\t\t");
+			//printf("(%d,%d)\n",x,y);
 
-			/* calcule la luminance d'un pixel, avec sur-échantillonnage 2x2 */
-			double pixel_radiance[3] = {0, 0, 0};
-			//Pour chaque ligne de sous pixel
-			for (int sub_i = 0; sub_i < 2; sub_i++) {
-				//Pour chaque colonne de sous-pixel
-				for (int sub_j = 0; sub_j < 2; sub_j++) {
-					double subpixel_radiance[3] = {0, 0, 0};
 
-					/* simulation de monte-carlo : on effectue plein de lancers de rayons et on moyenne */
-					for (int s = 0; s < samples; s++) { 
-						/* tire un rayon aléatoire dans une zone de la caméra qui correspond à peu près au pixel à calculer */
-						double r1 = 2 * erand48(PRNG_state);
-						double dx = (r1 < 1) ? sqrt(r1) - 1 : 1 - sqrt(2 - r1); 
-						double r2 = 2 * erand48(PRNG_state);
-						double dy = (r2 < 1) ? sqrt(r2) - 1 : 1 - sqrt(2 - r2);
-						double ray_direction[3];
-						copy(camera_direction, ray_direction);
+		//Pour chaque ligne
+	//	for (int i = 0; i < h_local; i++) {
 
-						// anciennes lignes  
-						// axpy(((sub_i + .5 + dy) / 2 + i) / h - .5, cy, ray_direction);
-						// axpy(((sub_j + .5 + dx) / 2 + j) / w - .5, cx, ray_direction);
+			//unsigned short PRNG_state[3] = {0, 0, i*i*i};
+			unsigned short PRNG_state[3] = {0, 0, x*x*x};
 
-						axpy(((sub_i + .5 + dy) / 2 + x) / h - .5, cy, ray_direction);
-						axpy(((sub_j + .5 + dx) / 2 + y) / w - .5, cx, ray_direction);
-						normalize(ray_direction);
+			//Pour chaque colonne
+	//		for (unsigned short j = 0; j < w; j++) {
 
-						double ray_origin[3];
-						copy(camera_position, ray_origin);
-						axpy(140, ray_direction, ray_origin);
-						
-						/* estime la lumiance qui arrive sur la caméra par ce rayon */
-						double sample_radiance[3];
-						radiance(ray_origin, ray_direction, 0, PRNG_state, sample_radiance);
-						/* fait la moyenne sur tous les rayons */
-						axpy(1. / samples, sample_radiance, subpixel_radiance);
+				/* calcule la luminance d'un pixel, avec sur-échantillonnage 2x2 */
+				double pixel_radiance[3] = {0, 0, 0};
+				//Pour chaque ligne de sous pixel
+				for (int sub_i = 0; sub_i < 2; sub_i++) {
+					//Pour chaque colonne de sous-pixel
+					for (int sub_j = 0; sub_j < 2; sub_j++) {
+						double subpixel_radiance[3] = {0, 0, 0};
+
+						/* simulation de monte-carlo : on effectue plein de lancers de rayons et on moyenne */
+						for (int s = 0; s < samples; s++) { 
+							/* tire un rayon aléatoire dans une zone de la caméra qui correspond à peu près au pixel à calculer */
+							double r1 = 2 * erand48(PRNG_state);
+							double dx = (r1 < 1) ? sqrt(r1) - 1 : 1 - sqrt(2 - r1); 
+							double r2 = 2 * erand48(PRNG_state);
+							double dy = (r2 < 1) ? sqrt(r2) - 1 : 1 - sqrt(2 - r2);
+							double ray_direction[3];
+							copy(camera_direction, ray_direction);
+
+							// anciennes lignes  
+							// axpy(((sub_i + .5 + dy) / 2 + i) / h - .5, cy, ray_direction);
+							// axpy(((sub_j + .5 + dx) / 2 + j) / w - .5, cx, ray_direction);
+
+							axpy(((sub_i + .5 + dy) / 2 + x) / h - .5, cy, ray_direction);
+							axpy(((sub_j + .5 + dx) / 2 + y) / w - .5, cx, ray_direction);
+							normalize(ray_direction);
+
+							double ray_origin[3];
+							copy(camera_position, ray_origin);
+							axpy(140, ray_direction, ray_origin);
+							
+							/* estime la lumiance qui arrive sur la caméra par ce rayon */
+							double sample_radiance[3];
+							radiance(ray_origin, ray_direction, 0, PRNG_state, sample_radiance);
+							/* fait la moyenne sur tous les rayons */
+							axpy(1. / samples, sample_radiance, subpixel_radiance);
+						}
+						clamp(subpixel_radiance);
+						/* fait la moyenne sur les 4 sous-pixels */
+						axpy(0.25, subpixel_radiance, pixel_radiance);
 					}
-					clamp(subpixel_radiance);
-					/* fait la moyenne sur les 4 sous-pixels */
-					axpy(0.25, subpixel_radiance, pixel_radiance);
 				}
-			}
 
-			// ligne originale 
-			// copy(pixel_radiance, image + 3 * ((h - 1 - i) * w + j)); // <-- retournement vertical
+				// ligne originale 
+				// copy(pixel_radiance, image + 3 * ((h - 1 - i) * w + j)); // <-- retournement vertical
 
-			// On gère le retournement vertical au moment de la sauvegarde de l'image car notre division 
-			// en blocs ne tombre pas forcement sur la fin d'une ligne
-			copy(pixel_radiance, image + 3*k);
-			
-			
-//		} // for j
-//	} // for i
+				// On gère le retournement vertical au moment de la sauvegarde de l'image car notre division 
+				// en blocs ne tombre pas forcement sur la fin d'une ligne
+				copy(pixel_radiance, image + 3*k);
+				
+				
+	//		} // for j
+	//	} // for i
 
-	} // for k
+		} // for k
+	}
+	
 
-	fprintf(stderr, "\n");
+	/* Fin du chronomètre pour chaque process*/
+	clock_end = wtime();
+
+	/* Affichage du temps d'execution */
+	double diff = (clock_end - clock_begin);
+	double sec;
+	int min;
+	min = diff / 60;
+	sec = diff - 60*min;
+	printf("Runtime execution process %d: %d min %f seconds\n",rank,min,sec);
 
 	/* ************************************************************************************** */
 	// TEST : Cette partie devra etre changee 
@@ -600,8 +622,7 @@ int main(int argc, char **argv)
 			// ligne originale 
 			// fprintf(f,"%d %d %d ", toInt(image[3 * i]), toInt(image[3 * i + 1]), toInt(image[3 * i + 2]));
 			
-			int new_line = h - (i/w) - 1;
-			int p = new_line * w + (i%w);
+			int p = (h - (i/w) - 1) * w + (i%w);
 
 			fprintf(f,"%d %d %d ", toInt(image[3 * p]), toInt(image[3 * p + 1]), toInt(image[3 * p + 2]));
 		}
@@ -617,16 +638,19 @@ int main(int argc, char **argv)
 		free(pixel_sup);
 	}
 
-	/* Fin du chronomètre */
-	clock_end = wtime();
+	if(rank==0)
+	{
+		/* Fin du chronomètre pour le processus 0 (Pour avoir le temps total)*/
+		clock_end = wtime();
 
-	/* Affichage du temps d'execution */
-	double diff = (clock_end - clock_begin);
-	double sec;
-	int min;
-	min = diff / 60;
-	sec = diff - 60*min;
-	printf("Runtime execution process %d: %d min %f seconds\n",rank,min,sec);
+		/* Affichage du temps d'execution */
+		double diff = (clock_end - clock_begin);
+		double sec;
+		int min;
+		min = diff / 60;
+		sec = diff - 60*min;
+		printf("Temps total : %d min %f seconds\n",min,sec);
+	}
 
 	MPI_Finalize();
 	return 0;
