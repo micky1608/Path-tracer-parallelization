@@ -24,9 +24,11 @@
 #define SIZE_PIXEL 3*sizeof(double)
 
 //TAGS
-#define TAG_NEED_DATA_PLEASE 10
+#define TAG_NEED_DATA 10
 #define TAG_YEP 11
 #define TAG_NOPE 12
+#define TAG_TASK_INFO 13
+#define TAG_TAST_DATA 14
 #define TAG_DATA 42
 
 enum Refl_t {DIFF, SPEC, REFR};   /* types de matériaux (DIFFuse, SPECular, REFRactive) */
@@ -354,7 +356,24 @@ double wtime()
 int toInt(double x)
 {
 	return pow(x, 1 / 2.2) * 255 + .5;   /* gamma correction = 2.2 */
-} 
+}
+
+//Melange un tableau
+void shuffle(int *array, size_t n, int rank)
+{
+	unsigned short PRNG_state[3] = {0, rank, rank*rank};
+    if (n > 1) 
+    {
+        size_t i;
+        for (i = 0; i < n - 1; i++) 
+        {
+          size_t j = i + erand48(PRNG_state)*(n - i);
+          int t = array[j];
+          array[j] = array[i];
+          array[i] = t;
+        }
+    }
+}
 
 int main(int argc, char **argv)
 { 
@@ -444,6 +463,12 @@ int main(int argc, char **argv)
 	// tableau pour contenir le nombre de blocs initialement affectés a chaque processus
 	int *nb_bloc_locaux;
 
+	// Taille en blocs d'imagesup
+	int imageSupSize;
+
+	//Nombre de blocs utilises d'imagesup
+	int used_imagesup_blocs=0;
+
 
 		/* Allocation mémoire */
 
@@ -452,6 +477,7 @@ int main(int argc, char **argv)
 		image = malloc(nb_bloc * SIZE_BLOCK * SIZE_PIXEL);
 
 		// pas de blocs supplementaires
+		imageSupSize=0;
 		image_sup = NULL;
 	}
 	else {
@@ -463,7 +489,8 @@ int main(int argc, char **argv)
 		image = malloc(nb_bloc_local * SIZE_BLOCK * SIZE_PIXEL);
 
 		// allocation d'un tampon supplémentaire 
-		image_sup = malloc(nb_bloc_local * SIZE_BLOCK * SIZE_PIXEL);
+		imageSupSize = nb_bloc_local;
+		image_sup = malloc(imageSupSize * SIZE_BLOCK * SIZE_PIXEL);
 
 		if (image_sup == NULL) { perror("Impossible d'allouer le tampon supplémentaire"); exit(1); }
 	}
@@ -472,11 +499,24 @@ int main(int argc, char **argv)
 
 	nb_bloc_locaux = (int*)malloc(nbProcess*sizeof(int));
 
-	MPI_Allgather(&nb_bloc_local , 1 , MPI_INT , nb_bloc_locaux , 1 , MPI_INT , MPI_COMM_WORLD);
+	//Rangs des autres processus pour les demandes de données
+	int * other_process_ranks = malloc((nbProcess-1)*sizeof(int)); //Tableau des rangs
+	char * other_process_hasWork = malloc((nbProcess-1)*sizeof(char)); //Tableau disant si oui ou non ce rang a du travail
+	int process_with_work_counter = nbProcess-1; //Compteur des processus ayant du travail
+	int other_process_offset=0;
+	for(int i=0; i<nbProcess; i++)
+	{
+		if(rank != i)
+		{
+			other_process_ranks[other_process_offset] = i;
+			other_process_hasWork[other_process_offset]=1;
+			other_process_offset++;
+		}
+	}
+	other_process_offset=0;
+	shuffle(other_process_ranks, nbProcess-1, rank); //Melange !
 
-/* ****************************************************************************************************************** */
-// Boucle principale 
-/* ****************************************************************************************************************** */
+	MPI_Allgather(&nb_bloc_local , 1 , MPI_INT , nb_bloc_locaux , 1 , MPI_INT , MPI_COMM_WORLD);
 
 	printf("Process %d : work in progress ...\n",rank);
 
@@ -488,85 +528,250 @@ int main(int argc, char **argv)
 
 	printf("Process %d : nb_bloc_precedent = %d\n",rank,nb_bloc_precedent);
 
+	//Gestion des taches courantes
+	int current_task_start = nb_bloc_precedent;
+	int current_task_blocs = nb_bloc_local;
+	short processing_local_blocs = 1; //true
+	int tasks_offset=0;
+	int * tasks = malloc(2*sizeof(int)*nbProcess); // Tableau de taches sous la forme 2 par 2 : nbBlocs, bloc de depart
+	int tasks_size = 2*nbProcess;
 
+	//Gestion des requetes
+	MPI_Request * recv_requests = malloc(sizeof(MPI_Request)*(nbProcess));
+	MPI_Request * send_requests = malloc(sizeof(MPI_Request)*(nbProcess));
+
+	//Gestion des envois de TAG_NOPE
+	short * nope_sent = malloc(sizeof(short)*nbProcess);
+	for(int i=0; i<nbProcess; i++)
+	{
+		nope_sent[i] = i==rank;
+	}
+
+	int current_sup_offset=0; //Offset pour écrire les pixels dans imagesup
+	
+
+	
+	/* ****************************************************************************************************************** */
+	// Boucle principale 
+	/* ****************************************************************************************************************** */
+
+	int dummy; //Variable à envoyer pour les Send
+	int task_buffer[2];
+
+	//Lancement des IRecv asynchrones
+	for(int i=0; i < nbProcess; i++)
+	{
+		if(i != rank)
+		{
+			MPI_Irecv(&dummy, 1, MPI_INT, i, TAG_NEED_DATA, MPI_COMM_WORLD, &recv_requests[i]);
+		}
+	}
 
 	// Pour chaque bloc
-	for(int b=0; b<nb_bloc_local; b++)
+	while(process_with_work_counter > 0)
 	{
-		// pour chaque pixel de son bloc de données
-		for(int k=b*SIZE_BLOCK ; k<(b+1)*SIZE_BLOCK ; k++) {
-			
-			// calcul des indices globaux x et y
-			x = (k + (nb_bloc_precedent * SIZE_BLOCK)) / w;
-			y = (k + (nb_bloc_precedent * SIZE_BLOCK)) % w;
-
-			//for(int l=0 ; l<rank ; l++) printf("\t\t");
-			//printf("(%d,%d)\n",x,y);
-
-
-		//Pour chaque ligne
-	//	for (int i = 0; i < h_local; i++) {
-
-			//unsigned short PRNG_state[3] = {0, 0, i*i*i};
-			unsigned short PRNG_state[3] = {0, 0, x*x*x};
-
-			//Pour chaque colonne
-	//		for (unsigned short j = 0; j < w; j++) {
-
-				/* calcule la luminance d'un pixel, avec sur-échantillonnage 2x2 */
-				double pixel_radiance[3] = {0, 0, 0};
-				//Pour chaque ligne de sous pixel
-				for (int sub_i = 0; sub_i < 2; sub_i++) {
-					//Pour chaque colonne de sous-pixel
-					for (int sub_j = 0; sub_j < 2; sub_j++) {
-						double subpixel_radiance[3] = {0, 0, 0};
-
-						/* simulation de monte-carlo : on effectue plein de lancers de rayons et on moyenne */
-						for (int s = 0; s < samples; s++) { 
-							/* tire un rayon aléatoire dans une zone de la caméra qui correspond à peu près au pixel à calculer */
-							double r1 = 2 * erand48(PRNG_state);
-							double dx = (r1 < 1) ? sqrt(r1) - 1 : 1 - sqrt(2 - r1); 
-							double r2 = 2 * erand48(PRNG_state);
-							double dy = (r2 < 1) ? sqrt(r2) - 1 : 1 - sqrt(2 - r2);
-							double ray_direction[3];
-							copy(camera_direction, ray_direction);
-
-							// anciennes lignes  
-							// axpy(((sub_i + .5 + dy) / 2 + i) / h - .5, cy, ray_direction);
-							// axpy(((sub_j + .5 + dx) / 2 + j) / w - .5, cx, ray_direction);
-
-							axpy(((sub_i + .5 + dy) / 2 + x) / h - .5, cy, ray_direction);
-							axpy(((sub_j + .5 + dx) / 2 + y) / w - .5, cx, ray_direction);
-							normalize(ray_direction);
-
-							double ray_origin[3];
-							copy(camera_position, ray_origin);
-							axpy(140, ray_direction, ray_origin);
-							
-							/* estime la lumiance qui arrive sur la caméra par ce rayon */
-							double sample_radiance[3];
-							radiance(ray_origin, ray_direction, 0, PRNG_state, sample_radiance);
-							/* fait la moyenne sur tous les rayons */
-							axpy(1. / samples, sample_radiance, subpixel_radiance);
+		//Boucle de demande de taches
+		if(!processing_local_blocs)
+		{
+			while(1)
+			{
+				if(other_process_hasWork[other_process_offset] == 1) //Si on n'a pas reçu de NOPE de ce processus
+				{
+					MPI_Send(&dummy, 1, MPI_INT, other_process_ranks[other_process_offset], TAG_NEED_DATA, MPI_COMM_WORLD); //Envoi de la demande
+					MPI_Recv(&task_buffer, 2, MPI_INT, other_process_ranks[other_process_offset],MPI_ANY_TAG, MPI_COMM_WORLD, &status); //Reception de la reponse
+					if(status.MPI_TAG == TAG_YEP) //On a reçu une tache
+					{
+						if(tasks_offset == tasks_size) //Si on a plus de place dans la liste des taches
+						{
+							tasks = realloc(tasks, (tasks_size+2*nbProcess)*sizeof(int)); //On augmente la taille
+							tasks_size+=2*nbProcess;
 						}
-						clamp(subpixel_radiance);
-						/* fait la moyenne sur les 4 sous-pixels */
-						axpy(0.25, subpixel_radiance, pixel_radiance);
+						current_task_blocs = tasks[tasks_offset++] = task_buffer[0];
+						current_task_start = tasks[tasks_offset++] = task_buffer[1];
+						other_process_offset = (other_process_offset+1)%(nbProcess-1);
+						used_imagesup_blocs+=current_task_blocs;
+						if(used_imagesup_blocs > imageSupSize) //Si il n'y a plus de place dans le buffer d'image supplementaire
+						{
+							image_sup = realloc(image_sup, used_imagesup_blocs*SIZE_BLOCK*SIZE_PIXEL);
+							imageSupSize=used_imagesup_blocs;
+						}
+						break;
+					}else //On a reçu un NOPE
+					{
+						other_process_hasWork[other_process_offset] = 0;
+						process_with_work_counter--;
+						if(process_with_work_counter == 0) //On n'a plus de processus à demander, on stoppe
+						{
+							break;
+						}
 					}
 				}
+				other_process_offset = (other_process_offset+1)%(nbProcess-1);
+			}
+		}
+		if(process_with_work_counter == 0)
+		{
+			break;
+		}
+		//for(int b=0; b<nb_bloc_local; b++)
+		for(int b=0; b<current_task_blocs; b++)
+		{
 
-				// ligne originale 
-				// copy(pixel_radiance, image + 3 * ((h - 1 - i) * w + j)); // <-- retournement vertical
-
-				// On gère le retournement vertical au moment de la sauvegarde de l'image car notre division 
-				// en blocs ne tombre pas forcement sur la fin d'une ligne
-				copy(pixel_radiance, image + 3*k);
+			if(processing_local_blocs) //Si on traite les blocs locaux
+			{
+				int nb_blocs_restants = current_task_blocs - b;
+				int task = ceil((nb_blocs_restants*1.0)/nbProcess); //Taille des taches
+				int finished=0;
+				int sendbuffer[2] = {0,0};
+				if(nb_blocs_restants > 1) //Si on a des taches à partager
+				{
+					for(int i=0; i<nbProcess;i++)
+					{
+						if(i != rank)
+						{
+							MPI_Test(recv_requests[i], &finished, &status); //On vérifie si on a reçu une demande
+							if(finished)
+							{
+								if(nb_blocs_restants > task) //Si il nous reste au moins une tache à envoyer
+								{
+									int sendable = task <= nb_blocs_restants-task ? task : nb_blocs_restants-task; //On envoi une tache complete, ou seulement de quoi garder une tache pour nous
+									sendbuffer[0] = sendable;
+									sendbuffer[1] = nb_bloc_precedent+current_task_blocs-sendable;
+									MPI_Send(sendbuffer, 2, MPI_INT, i, TAG_YEP, MPI_COMM_WORLD);
+									current_task_blocs -= sendable;
+									nb_blocs_restants -= sendable;
+									MPI_Irecv(&dummy, 1, MPI_INT, i, TAG_NEED_DATA, MPI_COMM_WORLD, &recv_requests[i]); //On relance un recv, au cas où ce processus nous renvoi une demande
+								}else
+								{
+									//On n'a plus de tache à envoyer, on envoi NOPE
+									sendbuffer[0] = 0;
+									sendbuffer[1] = 0;
+									MPI_Isend(sendbuffer, 2, MPI_INT, i, TAG_NOPE, MPI_COMM_WORLD, &send_requests[i]);
+									nope_sent[i]=1;
+								}
+							}
+						}
+					}
+				}
+				if(nb_blocs_restants <= 1) //On n'a plus de tache à envoyer, on envoi NOPE à tout le monde (dont on n'a pas déjà envoyé un NOPE) en préventif
+				{
+					sendbuffer[0] = 0;
+					sendbuffer[1] = 0;
+					for(int i=0; i<nbProcess; i++)
+					{
+						if(!nope_sent[i])
+						{
+							MPI_Isend(&sendbuffer, 2, MPI_INT,i, TAG_NOPE, MPI_COMM_WORLD, &send_requests[i]);
+							nope_sent[i]=1;
+						}
+					}
+				}
+			}
+			// pour chaque pixel de son bloc de données
+			for(int k=b*SIZE_BLOCK ; k<(b+1)*SIZE_BLOCK ; k++) {
 				
-				
-	//		} // for j
-	//	} // for i
+				// calcul des indices globaux x et y
+				//x = (k + (nb_bloc_precedent * SIZE_BLOCK)) / w;
+				//y = (k + (nb_bloc_precedent * SIZE_BLOCK)) % w;
+				x = (k + (current_task_start * SIZE_BLOCK)) / w;
+				y = (k + (current_task_start * SIZE_BLOCK)) % w;
 
-		} // for k
+				//for(int l=0 ; l<rank ; l++) printf("\t\t");
+				//printf("(%d,%d)\n",x,y);
+
+
+			//Pour chaque ligne
+		//	for (int i = 0; i < h_local; i++) {
+
+				//unsigned short PRNG_state[3] = {0, 0, i*i*i};
+				unsigned short PRNG_state[3] = {0, 0, x*x*x};
+
+				//Pour chaque colonne
+		//		for (unsigned short j = 0; j < w; j++) {
+
+					/* calcule la luminance d'un pixel, avec sur-échantillonnage 2x2 */
+					double pixel_radiance[3] = {0, 0, 0};
+					//Pour chaque ligne de sous pixel
+					for (int sub_i = 0; sub_i < 2; sub_i++) {
+						//Pour chaque colonne de sous-pixel
+						for (int sub_j = 0; sub_j < 2; sub_j++) {
+							double subpixel_radiance[3] = {0, 0, 0};
+
+							/* simulation de monte-carlo : on effectue plein de lancers de rayons et on moyenne */
+							for (int s = 0; s < samples; s++) { 
+								/* tire un rayon aléatoire dans une zone de la caméra qui correspond à peu près au pixel à calculer */
+								double r1 = 2 * erand48(PRNG_state);
+								double dx = (r1 < 1) ? sqrt(r1) - 1 : 1 - sqrt(2 - r1); 
+								double r2 = 2 * erand48(PRNG_state);
+								double dy = (r2 < 1) ? sqrt(r2) - 1 : 1 - sqrt(2 - r2);
+								double ray_direction[3];
+								copy(camera_direction, ray_direction);
+
+								// anciennes lignes  
+								// axpy(((sub_i + .5 + dy) / 2 + i) / h - .5, cy, ray_direction);
+								// axpy(((sub_j + .5 + dx) / 2 + j) / w - .5, cx, ray_direction);
+
+								axpy(((sub_i + .5 + dy) / 2 + x) / h - .5, cy, ray_direction);
+								axpy(((sub_j + .5 + dx) / 2 + y) / w - .5, cx, ray_direction);
+								normalize(ray_direction);
+
+								double ray_origin[3];
+								copy(camera_position, ray_origin);
+								axpy(140, ray_direction, ray_origin);
+								
+								/* estime la lumiance qui arrive sur la caméra par ce rayon */
+								double sample_radiance[3];
+								radiance(ray_origin, ray_direction, 0, PRNG_state, sample_radiance);
+								/* fait la moyenne sur tous les rayons */
+								axpy(1. / samples, sample_radiance, subpixel_radiance);
+							}
+							clamp(subpixel_radiance);
+							/* fait la moyenne sur les 4 sous-pixels */
+							axpy(0.25, subpixel_radiance, pixel_radiance);
+						}
+					}
+
+					// ligne originale 
+					// copy(pixel_radiance, image + 3 * ((h - 1 - i) * w + j)); // <-- retournement vertical
+
+					// On gère le retournement vertical au moment de la sauvegarde de l'image car notre division 
+					// en blocs ne tombre pas forcement sur la fin d'une ligne
+					if(processing_local_blocs)
+					{
+						copy(pixel_radiance, image + 3*k);
+					}else
+					{
+						if(rank != 0)
+						{
+							copy(pixel_radiance, image_sup+current_sup_offset*3);
+							++current_sup_offset;
+						}else
+						{
+							copy(pixel_radiance, image+(current_task_start*SIZE_BLOCK+k)*3);
+						}
+					}
+					
+					
+					
+		//		} // for j
+		//	} // for i
+
+			} // for k
+		}// for b
+
+		if(processing_local_blocs)
+		{
+			processing_local_blocs=0;
+			int sendbuffer[2] = {0, 0};
+			for(int i=0; i<nbProcess; i++) //On a traité tous les blocs locaux, on envoi NOPE aux processus qui n'en ont pas reçu
+			{
+				if(!nope_sent[i])
+				{
+					MPI_Isend(&sendbuffer, 2, MPI_INT,i, TAG_NOPE, MPI_COMM_WORLD, &send_requests[i]);
+					nope_sent[i]=1;
+				}
+			}
+		}
 	}
 	
 
@@ -584,6 +789,17 @@ int main(int argc, char **argv)
 	/* ************************************************************************************** */
 	// TEST : Cette partie devra etre changee 
 	/* ************************************************************************************** */
+
+	for(int i=0; i<nbProcess;i++) //On fait un wait pour s'assurer que toutes les requetes asynchrones sont finies, au cas où
+	{
+		if(i!= rank)
+		{
+			MPI_Wait(send_requests[i], &status);
+			MPI_Wait(recv_requests[i], &status);
+		}
+	}
+
+	//MICKAEL ! A TOI DE JOUER SUR CETTE PARTIE ! TU AS INTERET A CE QUE ÇA MARCHE BIEN POUR LA RECUPERATION !
 
 	int tag_data = 15;
 	
@@ -633,6 +849,12 @@ int main(int argc, char **argv)
 	/* Libération des ressources */
 	free(image);
 	free(nb_bloc_locaux);
+	free(other_process_ranks);
+	free(other_process_hasWork);
+	free(tasks);
+	free(recv_requests);
+	free(send_requests);
+	free(nope_sent);
 	if(rank != 0) {
 		free(image_sup);
 		free(pixel_sup);
