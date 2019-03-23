@@ -28,7 +28,7 @@
 #define TAG_YEP 11
 #define TAG_NOPE 12
 #define TAG_TASK_INFO 13
-#define TAG_TAST_DATA 14
+#define TAG_TASK_DATA 14
 #define TAG_DATA 42
 
 enum Refl_t {DIFF, SPEC, REFR};   /* types de matériaux (DIFFuse, SPECular, REFRactive) */
@@ -445,17 +445,12 @@ int main(int argc, char **argv)
 	if(rank == 0) {
 		printf("h : %d pixels\tw : %d pixels\n",h,w);
 		printf("nb pixels : %d\n",w*h);
+		printf("Size block : %d pixels\n",SIZE_BLOCK);
 		printf("nb bloc : %d\n",nb_bloc);
 	}
 
 	//printf("Process %d : nb_bloc_local = %d\th_local = %d\n",rank , nb_bloc_local,h_local);
-	printf("Process %d : nb_bloc_local = %d\n",rank , nb_bloc_local);
-
-	// on stocke les indices des premiers pixels des blocs supplémentaires calculés
-	int *pixel_sup;
-
-	// le nombre de blocs supplémentaires calculés
-	int nb_sup = 0;
+	//printf("Process %d : nb_bloc_local = %d\n",rank , nb_bloc_local);
 
 	// tampon mémoire pour l'image
 	double *image , *image_sup;
@@ -467,7 +462,7 @@ int main(int argc, char **argv)
 	int imageSupSize;
 
 	//Nombre de blocs utilises d'imagesup
-	int used_imagesup_blocs=0;
+	int used_imagesup_blocs = 0;
 
 
 		/* Allocation mémoire */
@@ -481,9 +476,6 @@ int main(int argc, char **argv)
 		image_sup = NULL;
 	}
 	else {
-		pixel_sup = malloc(nb_bloc_local * sizeof(int));
-
-		if (pixel_sup == NULL) { perror("Impossible d'allouer le tableau des numeros de blocs supplementaires"); exit(1); }
 
 		// allocation d'un tampon principal
 		image = malloc(nb_bloc_local * SIZE_BLOCK * SIZE_PIXEL);
@@ -526,12 +518,10 @@ int main(int argc, char **argv)
 	int nb_bloc_precedent = 0;
 	for(int l=0 ; l<rank ; l++) nb_bloc_precedent += nb_bloc_locaux[l];
 
-	printf("Process %d : nb_bloc_precedent = %d\n",rank,nb_bloc_precedent);
-
 	//Gestion des taches courantes
 	int current_task_start = nb_bloc_precedent;
 	int current_task_blocs = nb_bloc_local;
-	short processing_local_blocs = 1; //true
+	short processing_local_blocs = 1; // true
 	int tasks_offset=0;
 	int * tasks = malloc(2*sizeof(int)*nbProcess); // Tableau de taches sous la forme 2 par 2 : nbBlocs, bloc de depart
 	int tasks_size = 2*nbProcess;
@@ -550,7 +540,6 @@ int main(int argc, char **argv)
 	int current_sup_offset=0; //Offset pour écrire les pixels dans imagesup
 	
 
-	
 	/* ****************************************************************************************************************** */
 	// Boucle principale 
 	/* ****************************************************************************************************************** */
@@ -609,10 +598,12 @@ int main(int argc, char **argv)
 				other_process_offset = (other_process_offset+1)%(nbProcess-1);
 			}
 		}
+
 		if(process_with_work_counter == 0)
 		{
 			break;
 		}
+
 		//for(int b=0; b<nb_bloc_local; b++)
 		for(int b=0; b<current_task_blocs; b++)
 		{
@@ -629,7 +620,7 @@ int main(int argc, char **argv)
 					{
 						if(i != rank)
 						{
-							MPI_Test(recv_requests[i], &finished, &status); //On vérifie si on a reçu une demande
+							MPI_Test(recv_requests + i, &finished, &status); //On vérifie si on a reçu une demande
 							if(finished)
 							{
 								if(nb_blocs_restants > task) //Si il nous reste au moins une tache à envoyer
@@ -751,8 +742,6 @@ int main(int argc, char **argv)
 						}
 					}
 					
-					
-					
 		//		} // for j
 		//	} // for i
 
@@ -786,33 +775,88 @@ int main(int argc, char **argv)
 	sec = diff - 60*min;
 	printf("Runtime execution process %d: %d min %f seconds\n",rank,min,sec);
 
-	/* ************************************************************************************** */
-	// TEST : Cette partie devra etre changee 
-	/* ************************************************************************************** */
 
 	for(int i=0; i<nbProcess;i++) //On fait un wait pour s'assurer que toutes les requetes asynchrones sont finies, au cas où
 	{
 		if(i!= rank)
 		{
-			MPI_Wait(send_requests[i], &status);
-			MPI_Wait(recv_requests[i], &status);
+			MPI_Wait(send_requests + i, &status);
+			MPI_Wait(recv_requests + i, &status);
 		}
 	}
+
+	/* ************************************************************************************** */
+	// Regroupement des données
+	/* ************************************************************************************** */
 
 	//MICKAEL ! A TOI DE JOUER SUR CETTE PARTIE ! TU AS INTERET A CE QUE ÇA MARCHE BIEN POUR LA RECUPERATION !
 
-	int tag_data = 15;
+	int task_first_block , task_nb_block;
+	MPI_Status status_data_sup;
 	
+// printf("Process %d : Nb tasks : %d\n",rank,tasks_offset / 2);
 
 	if (rank == 0) {
+		// reception des données locales initiales de chaque processus
+		// certains blocks sont peut etre vide mais on bouche les trous plus tard
+		// on utilise le TAG_DATA 
+	
 		int offset = 3*nb_bloc_local*SIZE_BLOCK;
 		for(int source = 1 ; source < nbProcess ; source++) {
-			MPI_Recv(image + offset , 3*nb_bloc_locaux[source]*SIZE_BLOCK , MPI_DOUBLE , source , tag_data , MPI_COMM_WORLD,&status);
+			MPI_Recv(image + offset , 3*nb_bloc_locaux[source]*SIZE_BLOCK , MPI_DOUBLE , source , TAG_DATA , MPI_COMM_WORLD,&status);
 			offset +=  3*nb_bloc_locaux[source]*SIZE_BLOCK;
 		}
+
+		/* Première boucle de reception terminée */
+
+		// Pour chaque processus, on récupère les données suppélmentaires calculées 
+		for(int source = 1 ; source < nbProcess ; source++) {
+			
+			do {
+					MPI_Recv(&task_first_block , 1 , MPI_INT , source , TAG_TASK_INFO , MPI_COMM_WORLD , &status_data_sup);
+					MPI_Recv(&task_nb_block , 1 , MPI_INT , source , TAG_TASK_INFO , MPI_COMM_WORLD , &status_data_sup);
+
+					// si TASK_INFO != (0,0)
+					if(task_nb_block || task_first_block) {
+						MPI_Recv(image + 3*task_first_block*SIZE_BLOCK , 3*task_nb_block*SIZE_BLOCK , MPI_DOUBLE , source , TAG_TASK_DATA , MPI_COMM_WORLD , &status_data_sup);
+					}
+
+			} while (task_nb_block || task_first_block);
+		
+		}
+
 	}
+
+	// Processus != 0
 	else {
-		MPI_Send(image , 3*nb_bloc_local*SIZE_BLOCK , MPI_DOUBLE , 0 , tag_data , MPI_COMM_WORLD);
+
+		// envoi des données locales initales
+		// Certains blocks ont potentiellement été calculés par d'autres processus
+		// on utilise le TAG_DATA 
+		MPI_Send(image , 3*nb_bloc_local*SIZE_BLOCK , MPI_DOUBLE , 0 , TAG_DATA , MPI_COMM_WORLD);
+
+		// tant qu'il reste des tasks dans le blocs de données supplémentaires 
+		while(tasks_offset > 1) {
+				task_first_block = tasks[--tasks_offset];
+				task_nb_block = tasks[--tasks_offset];
+
+				// envoie du numéro du block de départ de la tache
+				MPI_Send(&task_first_block , 1 , MPI_INT , 0 , TAG_TASK_INFO , MPI_COMM_WORLD);
+
+				// envoie du nombre de blocks de la tâche
+				MPI_Send(&task_nb_block , 1 , MPI_INT , 0 , TAG_TASK_INFO , MPI_COMM_WORLD);
+
+				MPI_Send(image_sup + 3*(used_imagesup_blocs - task_nb_block)*SIZE_BLOCK ,  3*task_nb_block*SIZE_BLOCK , MPI_DOUBLE , 0 , TAG_TASK_DATA , MPI_COMM_WORLD);
+
+				used_imagesup_blocs -= task_nb_block;
+
+		}
+
+		// il ne reste plus de tasks à envoyer, on envoie (0,0) pour indiquer au processus 0 que c'est ok 
+		task_first_block = 0;
+		task_nb_block = 0;
+		MPI_Send(&task_first_block , 1 , MPI_INT , 0 , TAG_TASK_INFO , MPI_COMM_WORLD);
+		MPI_Send(&task_nb_block , 1 , MPI_INT , 0 , TAG_TASK_INFO , MPI_COMM_WORLD);
 	}
 
 
@@ -831,6 +875,8 @@ int main(int argc, char **argv)
 		sprintf(nom_rep, "/tmp/%s", pass->pw_name);
 		mkdir(nom_rep, S_IRWXU);
 		sprintf(nom_sortie, "%s/image.ppm", nom_rep);
+
+		printf("Image saved in '%s'\n",nom_sortie);
 		
 		FILE *f = fopen(nom_sortie, "w");
 		fprintf(f, "P3\n%d %d\n%d\n", w, h, 255); 
@@ -857,7 +903,6 @@ int main(int argc, char **argv)
 	free(nope_sent);
 	if(rank != 0) {
 		free(image_sup);
-		free(pixel_sup);
 	}
 
 	if(rank==0)
