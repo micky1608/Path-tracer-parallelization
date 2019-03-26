@@ -381,12 +381,12 @@ int main(int argc, char **argv)
 	// Mesurer le temps d'execution
 	double clock_begin, clock_end;
 	clock_begin = wtime();
-/*
+
 	// Petit cas test (small, quick and dirty):
 	int w = 320;
 	int h = 200;
 	int samples = 50;
-*/
+
 
 /*
 	// Gros cas test (big, slow and pretty):
@@ -395,9 +395,9 @@ int main(int argc, char **argv)
 	int samples = 100;
 */
 
-	int w = 1920;
+	/*int w = 1920;
 	int h = 1080;
-	int samples = 80;
+	int samples = 80;*/
 
 	if (argc == 2) 
 		samples = atoi(argv[1]) / 4;
@@ -809,6 +809,7 @@ int main(int argc, char **argv)
 	//MICKAEL ! A TOI DE JOUER SUR CETTE PARTIE ! TU AS INTERET A CE QUE ÇA MARCHE BIEN POUR LA RECUPERATION !
 
 	int task_first_block , task_nb_block;
+	int task_info[2] = {0,0};
 	MPI_Status status_data_sup;
 	
 // printf("Process %d : Nb tasks : %d\n",rank,tasks_offset / 2);
@@ -830,15 +831,16 @@ int main(int argc, char **argv)
 		for(int source = 1 ; source < nbProcess ; source++) {
 			
 			do {
-					MPI_Recv(&task_first_block , 1 , MPI_INT , source , TAG_TASK_INFO , MPI_COMM_WORLD , &status_data_sup);
-					MPI_Recv(&task_nb_block , 1 , MPI_INT , source , TAG_TASK_INFO , MPI_COMM_WORLD , &status_data_sup);
+					MPI_Recv(task_info, 2, MPI_INT, source, TAG_TASK_INFO, MPI_COMM_WORLD, &status_data_sup);
+					//MPI_Recv(&task_first_block , 1 , MPI_INT , source , TAG_TASK_INFO , MPI_COMM_WORLD , &status_data_sup);
+					//MPI_Recv(&task_nb_block , 1 , MPI_INT , source , TAG_TASK_INFO , MPI_COMM_WORLD , &status_data_sup);
 
 					// si TASK_INFO != (0,0)
-					if(task_nb_block) {
+					if(task_info[0]) {
 						MPI_Recv(image + 3*task_first_block*SIZE_BLOCK , 3*task_nb_block*SIZE_BLOCK , MPI_DOUBLE , source , TAG_TASK_DATA , MPI_COMM_WORLD , &status_data_sup);
 					}
 
-			} while (task_nb_block);
+			} while (task_info[0]);
 		
 		}
 
@@ -854,14 +856,15 @@ int main(int argc, char **argv)
 
 		// tant qu'il reste des tasks dans le bloc de données supplémentaires 
 		while(tasks_offset > 1) {
-				task_first_block = tasks[--tasks_offset];
-				task_nb_block = tasks[--tasks_offset];
+				task_info[1] = tasks[--tasks_offset];
+				task_info[0] = tasks[--tasks_offset];
 
 				// envoie du numéro du block de départ de la tache
-				MPI_Send(&task_first_block , 1 , MPI_INT , 0 , TAG_TASK_INFO , MPI_COMM_WORLD);
+				//MPI_Send(&task_first_block , 1 , MPI_INT , 0 , TAG_TASK_INFO , MPI_COMM_WORLD);
 
 				// envoie du nombre de blocks de la tâche
-				MPI_Send(&task_nb_block , 1 , MPI_INT , 0 , TAG_TASK_INFO , MPI_COMM_WORLD);
+				//MPI_Send(&task_nb_block , 1 , MPI_INT , 0 , TAG_TASK_INFO , MPI_COMM_WORLD);
+				MPI_Send(task_info, 2, MPI_INT, 0, TAG_TASK_INFO, MPI_COMM_WORLD);
 
 				MPI_Send(image_sup + 3*(used_imagesup_blocs - task_nb_block)*SIZE_BLOCK ,  3*task_nb_block*SIZE_BLOCK , MPI_DOUBLE , 0 , TAG_TASK_DATA , MPI_COMM_WORLD);
 
@@ -870,10 +873,13 @@ int main(int argc, char **argv)
 		}
 
 		// il ne reste plus de tasks à envoyer, on envoie (0,0) pour indiquer au processus 0 que c'est ok 
-		task_first_block = 0;
-		task_nb_block = 0;
-		MPI_Send(&task_first_block , 1 , MPI_INT , 0 , TAG_TASK_INFO , MPI_COMM_WORLD);
-		MPI_Send(&task_nb_block , 1 , MPI_INT , 0 , TAG_TASK_INFO , MPI_COMM_WORLD);
+		//task_first_block = 0;
+		//task_nb_block = 0;
+		//MPI_Send(&task_first_block , 1 , MPI_INT , 0 , TAG_TASK_INFO , MPI_COMM_WORLD);
+		//MPI_Send(&task_nb_block , 1 , MPI_INT , 0 , TAG_TASK_INFO , MPI_COMM_WORLD);
+		task_info[0] = 0;
+		task_info[1] = 0;
+		MPI_Send(task_info, 2, MPI_INT, 0, TAG_TASK_INFO, MPI_COMM_WORLD);
 	}
 
 
