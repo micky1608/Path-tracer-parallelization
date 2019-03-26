@@ -19,6 +19,7 @@
 #include <sys/types.h> /* pour getpwuid */
 #include <pwd.h>       /* pour getpwuid */
 #include <time.h>
+#include <unistd.h> // pour gethostname
 
 #define SIZE_BLOCK 32	// nombre de pixels contenus dans un bloc
 #define SIZE_PIXEL 3*sizeof(double)
@@ -427,6 +428,9 @@ int main(int argc, char **argv)
 	MPI_Comm_size(MPI_COMM_WORLD, &nbProcess);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+	char hostname[50];
+	gethostname(hostname , 50);
+
 		/* Initialisation des variables de division des données*/
 	
 	// nombre total de blocs 
@@ -444,9 +448,11 @@ int main(int argc, char **argv)
 
 	if(rank == 0) {
 		printf("h : %d pixels\tw : %d pixels\n",h,w);
+		printf("samples : %d\n",samples);
 		printf("nb pixels : %d\n",w*h);
 		printf("Size block : %d pixels\n",SIZE_BLOCK);
 		printf("nb bloc : %d\n",nb_bloc);
+		printf("Nb process : %d\n",nbProcess);
 	}
 
 	//printf("Process %d : nb_bloc_local = %d\th_local = %d\n",rank , nb_bloc_local,h_local);
@@ -510,7 +516,7 @@ int main(int argc, char **argv)
 
 	MPI_Allgather(&nb_bloc_local , 1 , MPI_INT , nb_bloc_locaux , 1 , MPI_INT , MPI_COMM_WORLD);
 
-	printf("Process %d : work in progress ...\n",rank);
+	printf("Process %d : work in progress on %s ...\n",rank,hostname);
 
 	// definition des indices dans l'image globale
 	int x,y;
@@ -556,7 +562,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	// Pour chaque bloc
+
 	while(process_with_work_counter > 0)
 	{
 		//Boucle de demande de taches
@@ -763,17 +769,20 @@ int main(int argc, char **argv)
 		}
 	}
 	
-
-	/* Fin du chronomètre pour chaque process*/
+/*
+	// Fin du chronomètre pour chaque process 
 	clock_end = wtime();
 
-	/* Affichage du temps d'execution */
+	// Affichage du temps d'execution
 	double diff = (clock_end - clock_begin);
 	double sec;
 	int min;
 	min = diff / 60;
 	sec = diff - 60*min;
-	printf("Runtime execution process %d: %d min %f seconds\n",rank,min,sec);
+*/
+
+
+	//printf("Runtime execution process %d: %d min %f seconds\n",rank,min,sec);
 
 
 	for(int i=0; i<nbProcess;i++) //On fait un wait pour s'assurer que toutes les requetes asynchrones sont finies, au cas où
@@ -809,7 +818,7 @@ int main(int argc, char **argv)
 
 		/* Première boucle de reception terminée */
 
-		// Pour chaque processus, on récupère les données suppélmentaires calculées 
+		// Pour chaque processus, on récupère les données supplementaires calculées 
 		for(int source = 1 ; source < nbProcess ; source++) {
 			
 			do {
@@ -817,11 +826,11 @@ int main(int argc, char **argv)
 					MPI_Recv(&task_nb_block , 1 , MPI_INT , source , TAG_TASK_INFO , MPI_COMM_WORLD , &status_data_sup);
 
 					// si TASK_INFO != (0,0)
-					if(task_nb_block || task_first_block) {
+					if(task_nb_block) {
 						MPI_Recv(image + 3*task_first_block*SIZE_BLOCK , 3*task_nb_block*SIZE_BLOCK , MPI_DOUBLE , source , TAG_TASK_DATA , MPI_COMM_WORLD , &status_data_sup);
 					}
 
-			} while (task_nb_block || task_first_block);
+			} while (task_nb_block);
 		
 		}
 
@@ -835,7 +844,7 @@ int main(int argc, char **argv)
 		// on utilise le TAG_DATA 
 		MPI_Send(image , 3*nb_bloc_local*SIZE_BLOCK , MPI_DOUBLE , 0 , TAG_DATA , MPI_COMM_WORLD);
 
-		// tant qu'il reste des tasks dans le blocs de données supplémentaires 
+		// tant qu'il reste des tasks dans le bloc de données supplémentaires 
 		while(tasks_offset > 1) {
 				task_first_block = tasks[--tasks_offset];
 				task_nb_block = tasks[--tasks_offset];

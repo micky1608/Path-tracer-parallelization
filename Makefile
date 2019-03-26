@@ -19,4 +19,7 @@ clean :
 exec :
 	mpirun -n $(NB_PROC) ./$(BIN)
 
+check : 
+	valgrind --leak-check=yes mpirun -n $(NB_PROC) ./$(BIN)
+
 
