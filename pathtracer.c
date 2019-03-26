@@ -381,16 +381,23 @@ int main(int argc, char **argv)
 	// Mesurer le temps d'execution
 	double clock_begin, clock_end;
 	clock_begin = wtime();
-
-	/* Petit cas test (small, quick and dirty): */
+/*
+	// Petit cas test (small, quick and dirty):
 	int w = 320;
 	int h = 200;
 	int samples = 50;
+*/
 
-	/* Gros cas test (big, slow and pretty): */
-	/* int w = 3840; */
-	/* int h = 2160; */
-	/* int samples = 5000;  */
+/*
+	// Gros cas test (big, slow and pretty):
+	int w = 3840;
+	int h = 2160;
+	int samples = 100;
+*/
+
+	int w = 1920;
+	int h = 1080;
+	int samples = 80;
 
 	if (argc == 2) 
 		samples = atoi(argv[1]) / 4;
@@ -637,6 +644,7 @@ int main(int argc, char **argv)
 									MPI_Send(sendbuffer, 2, MPI_INT, i, TAG_YEP, MPI_COMM_WORLD);
 									current_task_blocs -= sendable;
 									nb_blocs_restants -= sendable;
+									nb_bloc_local -= sendable;
 									MPI_Irecv(&dummy, 1, MPI_INT, i, TAG_NEED_DATA, MPI_COMM_WORLD, &recv_requests[i]); //On relance un recv, au cas où ce processus nous renvoi une demande
 								}else
 								{
@@ -810,7 +818,7 @@ int main(int argc, char **argv)
 		// certains blocks sont peut etre vide mais on bouche les trous plus tard
 		// on utilise le TAG_DATA 
 	
-		int offset = 3*nb_bloc_local*SIZE_BLOCK;
+		int offset = 3*nb_bloc_locaux[0]*SIZE_BLOCK;
 		for(int source = 1 ; source < nbProcess ; source++) {
 			MPI_Recv(image + offset , 3*nb_bloc_locaux[source]*SIZE_BLOCK , MPI_DOUBLE , source , TAG_DATA , MPI_COMM_WORLD,&status);
 			offset +=  3*nb_bloc_locaux[source]*SIZE_BLOCK;
