@@ -395,9 +395,11 @@ int main(int argc, char **argv)
 	int samples = 100;
 */
 
-	/*int w = 1920;
+	/*
+	int w = 1920;
 	int h = 1080;
-	int samples = 80;*/
+	int samples = 80;
+	*/
 
 	if (argc == 2) 
 		samples = atoi(argv[1]) / 4;
@@ -451,7 +453,6 @@ int main(int argc, char **argv)
 		nb_bloc_local++;
 	}
 
-	// int h_local = ceil((SIZE_BLOCK*nb_bloc_local)/w);
 
 	if(rank == 0) {
 		printf("h : %d pixels\tw : %d pixels\n",h,w);
@@ -461,9 +462,6 @@ int main(int argc, char **argv)
 		printf("nb bloc : %d\n",nb_bloc);
 		printf("Nb process : %d\n",nbProcess);
 	}
-
-	//printf("Process %d : nb_bloc_local = %d\th_local = %d\n",rank , nb_bloc_local,h_local);
-	//printf("Process %d : nb_bloc_local = %d\n",rank , nb_bloc_local);
 
 	// tampon mémoire pour l'image
 	double *image , *image_sup;
@@ -676,28 +674,17 @@ int main(int argc, char **argv)
 			for(int k=b*SIZE_BLOCK ; k<(b+1)*SIZE_BLOCK ; k++) {
 				
 				// calcul des indices globaux x et y
-				//x = (k + (nb_bloc_precedent * SIZE_BLOCK)) / w;
-				//y = (k + (nb_bloc_precedent * SIZE_BLOCK)) % w;
 				x = (k + (current_task_start * SIZE_BLOCK)) / w;
 				y = (k + (current_task_start * SIZE_BLOCK)) % w;
-
-				//for(int l=0 ; l<rank ; l++) printf("\t\t");
-				//printf("(%d,%d)\n",x,y);
-
-
-			//Pour chaque ligne
-		//	for (int i = 0; i < h_local; i++) {
 
 				//unsigned short PRNG_state[3] = {0, 0, i*i*i};
 				unsigned short PRNG_state[3] = {0, 0, x*x*x};
 
-				//Pour chaque colonne
-		//		for (unsigned short j = 0; j < w; j++) {
+				/* calcule la luminance d'un pixel, avec sur-échantillonnage 2x2 */
+				double pixel_radiance[3] = {0, 0, 0};
+				//Pour chaque ligne de sous pixel
+				for (int sub_i = 0; sub_i < 2; sub_i++) {
 
-					/* calcule la luminance d'un pixel, avec sur-échantillonnage 2x2 */
-					double pixel_radiance[3] = {0, 0, 0};
-					//Pour chaque ligne de sous pixel
-					for (int sub_i = 0; sub_i < 2; sub_i++) {
 						//Pour chaque colonne de sous-pixel
 						for (int sub_j = 0; sub_j < 2; sub_j++) {
 							double subpixel_radiance[3] = {0, 0, 0};
@@ -755,10 +742,6 @@ int main(int argc, char **argv)
 							copy(pixel_radiance, image+(current_task_start*SIZE_BLOCK+k)*3);
 						}
 					}
-					
-		//		} // for j
-		//	} // for i
-
 			} // for k
 		}// for b
 
@@ -776,18 +759,6 @@ int main(int argc, char **argv)
 			}
 		}
 	}
-	
-/*
-	// Fin du chronomètre pour chaque process 
-	clock_end = wtime();
-
-	// Affichage du temps d'execution
-	double diff = (clock_end - clock_begin);
-	double sec;
-	int min;
-	min = diff / 60;
-	sec = diff - 60*min;
-*/
 
 
 	//printf("Runtime execution process %d: %d min %f seconds\n",rank,min,sec);
@@ -806,14 +777,10 @@ int main(int argc, char **argv)
 	// Regroupement des données
 	/* ************************************************************************************** */
 
-	//MICKAEL ! A TOI DE JOUER SUR CETTE PARTIE ! TU AS INTERET A CE QUE ÇA MARCHE BIEN POUR LA RECUPERATION !
 
-	int task_first_block , task_nb_block;
 	int task_info[2] = {0,0};
 	MPI_Status status_data_sup;
 	
-// printf("Process %d : Nb tasks : %d\n",rank,tasks_offset / 2);
-
 	if (rank == 0) {
 		// reception des données locales initiales de chaque processus
 		// certains blocks sont peut etre vide mais on bouche les trous plus tard
@@ -832,12 +799,10 @@ int main(int argc, char **argv)
 			
 			do {
 					MPI_Recv(task_info, 2, MPI_INT, source, TAG_TASK_INFO, MPI_COMM_WORLD, &status_data_sup);
-					//MPI_Recv(&task_first_block , 1 , MPI_INT , source , TAG_TASK_INFO , MPI_COMM_WORLD , &status_data_sup);
-					//MPI_Recv(&task_nb_block , 1 , MPI_INT , source , TAG_TASK_INFO , MPI_COMM_WORLD , &status_data_sup);
-
+				
 					// si TASK_INFO != (0,0)
 					if(task_info[0]) {
-						MPI_Recv(image + 3*task_first_block*SIZE_BLOCK , 3*task_nb_block*SIZE_BLOCK , MPI_DOUBLE , source , TAG_TASK_DATA , MPI_COMM_WORLD , &status_data_sup);
+						MPI_Recv(image + 3*task_info[1]*SIZE_BLOCK , 3*task_info[0]*SIZE_BLOCK , MPI_DOUBLE , source , TAG_TASK_DATA , MPI_COMM_WORLD , &status_data_sup);
 					}
 
 			} while (task_info[0]);
@@ -856,27 +821,20 @@ int main(int argc, char **argv)
 
 		// tant qu'il reste des tasks dans le bloc de données supplémentaires 
 		while(tasks_offset > 1) {
+				
 				task_info[1] = tasks[--tasks_offset];
 				task_info[0] = tasks[--tasks_offset];
 
 				// envoie du numéro du block de départ de la tache
-				//MPI_Send(&task_first_block , 1 , MPI_INT , 0 , TAG_TASK_INFO , MPI_COMM_WORLD);
-
 				// envoie du nombre de blocks de la tâche
-				//MPI_Send(&task_nb_block , 1 , MPI_INT , 0 , TAG_TASK_INFO , MPI_COMM_WORLD);
 				MPI_Send(task_info, 2, MPI_INT, 0, TAG_TASK_INFO, MPI_COMM_WORLD);
 
-				MPI_Send(image_sup + 3*(used_imagesup_blocs - task_nb_block)*SIZE_BLOCK ,  3*task_nb_block*SIZE_BLOCK , MPI_DOUBLE , 0 , TAG_TASK_DATA , MPI_COMM_WORLD);
+				MPI_Send(image_sup + 3*(used_imagesup_blocs - task_info[0])*SIZE_BLOCK ,  3*task_info[0]*SIZE_BLOCK , MPI_DOUBLE , 0 , TAG_TASK_DATA , MPI_COMM_WORLD);
 
-				used_imagesup_blocs -= task_nb_block;
-
+				used_imagesup_blocs -= task_info[0]	;
 		}
 
 		// il ne reste plus de tasks à envoyer, on envoie (0,0) pour indiquer au processus 0 que c'est ok 
-		//task_first_block = 0;
-		//task_nb_block = 0;
-		//MPI_Send(&task_first_block , 1 , MPI_INT , 0 , TAG_TASK_INFO , MPI_COMM_WORLD);
-		//MPI_Send(&task_nb_block , 1 , MPI_INT , 0 , TAG_TASK_INFO , MPI_COMM_WORLD);
 		task_info[0] = 0;
 		task_info[1] = 0;
 		MPI_Send(task_info, 2, MPI_INT, 0, TAG_TASK_INFO, MPI_COMM_WORLD);
