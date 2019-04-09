@@ -21,7 +21,7 @@
 #include <time.h>
 #include <unistd.h> // pour gethostname
 
-#define SIZE_BLOCK 32	// nombre de pixels contenus dans un bloc
+#define SIZE_BLOCK 8	// nombre de pixels contenus dans un bloc
 #define SIZE_PIXEL 3*sizeof(double)
 
 //TAGS

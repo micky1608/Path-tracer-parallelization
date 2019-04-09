@@ -6,7 +6,7 @@ LDFLAGS=-lm
 
 BIN=pathtracer
 
-NB_PROC=2
+NB_PROC=4
 
 HOST=hostfile408
 

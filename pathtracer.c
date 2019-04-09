@@ -387,7 +387,7 @@ int main(int argc, char **argv)
 	// Petit cas test (small, quick and dirty):
 	int w = 320;
 	int h = 200;
-	int samples = 200;
+	int samples = 50;
 
 
 /*
@@ -556,7 +556,8 @@ int main(int argc, char **argv)
 		nope_sent[i] = i==rank;
 	}
 
-	int current_sup_offset=0; //Offset pour écrire les pixels dans imagesup
+	int current_bloc_offset=0;
+	//int current_sup_offset=0; //Offset pour écrire les pixels dans imagesup
 	
 
 	/* ****************************************************************************************************************** */
@@ -754,8 +755,7 @@ int main(int argc, char **argv)
 						{
 							#pragma omp critical
 							{
-								copy(pixel_radiance, image_sup+current_sup_offset*3);
-								++current_sup_offset;
+								copy(pixel_radiance, image_sup+(current_bloc_offset*SIZE_BLOCK + k)*3);
 							}
 						}else
 						{
@@ -764,7 +764,7 @@ int main(int argc, char **argv)
 					}
 			} // for k
 		}// for b
-
+		current_bloc_offset = used_imagesup_blocs;
 		if(processing_local_blocs)
 		{
 			processing_local_blocs=0;
