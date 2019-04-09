@@ -1,1 +1,5 @@
 .vscode/
+hostfile*
+projet_*
+pathtracer
+image.ppm

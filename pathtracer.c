@@ -23,6 +23,7 @@
 #include <unistd.h> // pour gethostname
 
 #define SIZE_BLOCK 32	// nombre de pixels contenus dans un bloc
+#define NBTHREAD 4
 #define SIZE_PIXEL 3*sizeof(double)
 
 //TAGS
@@ -438,6 +439,8 @@ int main(int argc, char **argv)
 	MPI_Comm_size(MPI_COMM_WORLD, &nbProcess);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
+	omp_set_num_threads(NBTHREAD);
+
 	char hostname[50];
 	gethostname(hostname , 50);
 
@@ -464,7 +467,7 @@ int main(int argc, char **argv)
 		printf("Size block : %d pixels\n",SIZE_BLOCK);
 		printf("nb bloc : %d\n",nb_bloc);
 		printf("Nb process : %d\n",nbProcess);
-
+		printf("Nb thread : %d\n",NBTHREAD);
 	}
 
 
@@ -674,7 +677,10 @@ int main(int argc, char **argv)
 					}
 				}
 			}
+
+		
 			// pour chaque pixel de son bloc de données
+			#pragma omp parallel for private(x,y)
 			for(int k=b*SIZE_BLOCK ; k<(b+1)*SIZE_BLOCK ; k++) {
 				
 				// calcul des indices globaux x et y
@@ -688,19 +694,11 @@ int main(int argc, char **argv)
 
 				double pixel_radiance[3] = {0, 0, 0};
 
-				double sub_pixel_radiance_array[4][3];
-
-				zero(sub_pixel_radiance_array[0]);
-				zero(sub_pixel_radiance_array[1]);
-				zero(sub_pixel_radiance_array[2]);
-				zero(sub_pixel_radiance_array[3]);
-				
 				// Deux boucles imbriquées pour les sous pixels
-				#pragma omp parallel for collapse(2)
 				for (int sub_i = 0; sub_i < 2; sub_i++) {
 						for (int sub_j = 0; sub_j < 2; sub_j++) {
 
-							//double subpixel_radiance[3] = {0, 0, 0};
+							double subpixel_radiance[3] = {0, 0, 0};
 
 							/* simulation de monte-carlo : on effectue plein de lancers de rayons et on moyenne */
 							for (int s = 0; s < samples; s++) { 
@@ -729,20 +727,18 @@ int main(int argc, char **argv)
 								radiance(ray_origin, ray_direction, 0, PRNG_state, sample_radiance);
 								
 								/* fait la moyenne sur tous les rayons */
-								axpy(1. / samples, sample_radiance, sub_pixel_radiance_array[2*sub_i + sub_j]);
+								axpy(1. / samples, sample_radiance, subpixel_radiance);
 							}
 
-							clamp(sub_pixel_radiance_array[2*sub_i + sub_j]);
+							clamp(subpixel_radiance);
+							
+							/* fait la moyenne sur les 4 sous-pixels */
+							axpy(0.25, subpixel_radiance, pixel_radiance);
 							
 						}
 					}
 
-					/* fait la moyenne sur les 4 sous-pixels */
-					axpy(0.25, sub_pixel_radiance_array[0], pixel_radiance);
-					axpy(0.25, sub_pixel_radiance_array[1], pixel_radiance);
-					axpy(0.25, sub_pixel_radiance_array[2], pixel_radiance);
-					axpy(0.25, sub_pixel_radiance_array[3], pixel_radiance);
-
+					
 
 					// ligne originale 
 					// copy(pixel_radiance, image + 3 * ((h - 1 - i) * w + j)); // <-- retournement vertical
@@ -756,8 +752,11 @@ int main(int argc, char **argv)
 					{
 						if(rank != 0)
 						{
-							copy(pixel_radiance, image_sup+current_sup_offset*3);
-							++current_sup_offset;
+							#pragma omp critical
+							{
+								copy(pixel_radiance, image_sup+current_sup_offset*3);
+								++current_sup_offset;
+							}
 						}else
 						{
 							copy(pixel_radiance, image+(current_task_start*SIZE_BLOCK+k)*3);
