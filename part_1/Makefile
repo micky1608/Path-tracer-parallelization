@@ -2,7 +2,7 @@ CC=mpicc -Wall -O3
 
 CFLAGS=-Iinc
 
-LDFLAGS=-lm -fopenmp
+LDFLAGS=-lm
 
 BIN=pathtracer
 

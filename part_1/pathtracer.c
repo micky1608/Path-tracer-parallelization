@@ -1,4 +1,4 @@
-/* basé sur on smallpt, a Path Tracer by Kevin Beason, 2008
+    /* basé sur on smallpt, a Path Tracer by Kevin Beason, 2008
  *  	http://www.kevinbeason.com/smallpt/ 
  *
  * Converti en C et modifié par Charles Bouillaguet, 2019
@@ -8,7 +8,6 @@
  */
 
 #define _XOPEN_SOURCE
-#include <omp.h>
 #include <mpi.h>
 #include <math.h>   
 #include <stdlib.h> 
@@ -396,11 +395,11 @@ int main(int argc, char **argv)
 	int samples = 100;
 */
 
-/*	
+	/*
 	int w = 1920;
 	int h = 1080;
-	int samples = 100;
-*/
+	int samples = 80;
+	*/
 
 	if (argc == 2) 
 		samples = atoi(argv[1]) / 4;
@@ -455,8 +454,6 @@ int main(int argc, char **argv)
 	}
 
 
-
-
 	if(rank == 0) {
 		printf("h : %d pixels\tw : %d pixels\n",h,w);
 		printf("samples : %d\n",samples);
@@ -464,9 +461,7 @@ int main(int argc, char **argv)
 		printf("Size block : %d pixels\n",SIZE_BLOCK);
 		printf("nb bloc : %d\n",nb_bloc);
 		printf("Nb process : %d\n",nbProcess);
-
 	}
-
 
 	// tampon mémoire pour l'image
 	double *image , *image_sup;
@@ -526,7 +521,7 @@ int main(int argc, char **argv)
 
 	MPI_Allgather(&nb_bloc_local , 1 , MPI_INT , nb_bloc_locaux , 1 , MPI_INT , MPI_COMM_WORLD);
 
-	printf("Process %d : processing %d blocs on %s ...\n",rank,nb_bloc_locaux[rank],hostname);
+	printf("Process %d : work in progress on %s ...\n",rank,hostname);
 
 	// definition des indices dans l'image globale
 	int x,y;
@@ -620,6 +615,7 @@ int main(int argc, char **argv)
 			break;
 		}
 
+		//for(int b=0; b<nb_bloc_local; b++)
 		for(int b=0; b<current_task_blocs; b++)
 		{
 
@@ -685,22 +681,13 @@ int main(int argc, char **argv)
 				unsigned short PRNG_state[3] = {0, 0, x*x*x};
 
 				/* calcule la luminance d'un pixel, avec sur-échantillonnage 2x2 */
-
 				double pixel_radiance[3] = {0, 0, 0};
-
-				double sub_pixel_radiance_array[4][3];
-
-				zero(sub_pixel_radiance_array[0]);
-				zero(sub_pixel_radiance_array[1]);
-				zero(sub_pixel_radiance_array[2]);
-				zero(sub_pixel_radiance_array[3]);
-				
-				// Deux boucles imbriquées pour les sous pixels
-				#pragma omp parallel for collapse(2)
+				//Pour chaque ligne de sous pixel
 				for (int sub_i = 0; sub_i < 2; sub_i++) {
-						for (int sub_j = 0; sub_j < 2; sub_j++) {
 
-							//double subpixel_radiance[3] = {0, 0, 0};
+						//Pour chaque colonne de sous-pixel
+						for (int sub_j = 0; sub_j < 2; sub_j++) {
+							double subpixel_radiance[3] = {0, 0, 0};
 
 							/* simulation de monte-carlo : on effectue plein de lancers de rayons et on moyenne */
 							for (int s = 0; s < samples; s++) { 
@@ -727,22 +714,14 @@ int main(int argc, char **argv)
 								/* estime la lumiance qui arrive sur la caméra par ce rayon */
 								double sample_radiance[3];
 								radiance(ray_origin, ray_direction, 0, PRNG_state, sample_radiance);
-								
 								/* fait la moyenne sur tous les rayons */
-								axpy(1. / samples, sample_radiance, sub_pixel_radiance_array[2*sub_i + sub_j]);
+								axpy(1. / samples, sample_radiance, subpixel_radiance);
 							}
-
-							clamp(sub_pixel_radiance_array[2*sub_i + sub_j]);
-							
+							clamp(subpixel_radiance);
+							/* fait la moyenne sur les 4 sous-pixels */
+							axpy(0.25, subpixel_radiance, pixel_radiance);
 						}
 					}
-
-					/* fait la moyenne sur les 4 sous-pixels */
-					axpy(0.25, sub_pixel_radiance_array[0], pixel_radiance);
-					axpy(0.25, sub_pixel_radiance_array[1], pixel_radiance);
-					axpy(0.25, sub_pixel_radiance_array[2], pixel_radiance);
-					axpy(0.25, sub_pixel_radiance_array[3], pixel_radiance);
-
 
 					// ligne originale 
 					// copy(pixel_radiance, image + 3 * ((h - 1 - i) * w + j)); // <-- retournement vertical
@@ -835,8 +814,6 @@ int main(int argc, char **argv)
 	// Processus != 0
 	else {
 
-		int nb_bloc_sup = 0;
-
 		// envoi des données locales initales
 		// Certains blocks ont potentiellement été calculés par d'autres processus
 		// on utilise le TAG_DATA 
@@ -855,11 +832,7 @@ int main(int argc, char **argv)
 				MPI_Send(image_sup + 3*(used_imagesup_blocs - task_info[0])*SIZE_BLOCK ,  3*task_info[0]*SIZE_BLOCK , MPI_DOUBLE , 0 , TAG_TASK_DATA , MPI_COMM_WORLD);
 
 				used_imagesup_blocs -= task_info[0]	;
-
-				nb_bloc_sup += task_info[0];
 		}
-
-		printf("Process %d computed %d additional blocs\n",rank,nb_bloc_sup);
 
 		// il ne reste plus de tasks à envoyer, on envoie (0,0) pour indiquer au processus 0 que c'est ok 
 		task_info[0] = 0;
