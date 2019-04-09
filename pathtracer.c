@@ -403,8 +403,14 @@ int main(int argc, char **argv)
 	int samples = 100;
 */
 
-	if (argc == 2) 
-		samples = atoi(argv[1]) / 4;
+
+	if (argc >= 2) 
+		samples = atoi(argv[1]);
+
+	if(argc >= 4) {
+		w = atoi(argv[2]);
+		h = atoi(argv[3]);
+	}
 
 	static const double CST = 0.5135;  /* ceci défini l'angle de vue */
 	double camera_position[3] = {50, 52, 295.6};
@@ -753,10 +759,7 @@ int main(int argc, char **argv)
 					{
 						if(rank != 0)
 						{
-							#pragma omp critical
-							{
-								copy(pixel_radiance, image_sup+(current_bloc_offset*SIZE_BLOCK + k)*3);
-							}
+							copy(pixel_radiance, image_sup+(current_bloc_offset*SIZE_BLOCK + k)*3);
 						}else
 						{
 							copy(pixel_radiance, image+(current_task_start*SIZE_BLOCK+k)*3);

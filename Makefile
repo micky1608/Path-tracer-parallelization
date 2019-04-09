@@ -8,9 +8,14 @@ BIN=pathtracer
 
 NB_PROC=2
 
-HOST=hostfile408
+SAMPLE=500
 
-RUNFLAG=#-hostfile ${HOST}
+WIDTH=1920
+HEIGHT=1080
+
+HOST=hostfile401
+
+RUNFLAG=-hostfile ${HOST}
 
 all : $(BIN)
 
@@ -21,6 +26,6 @@ clean :
 	rm -f $(BIN) *.o *~
 
 exec :
-	mpirun -n $(NB_PROC) $(RUNFLAG)  ./$(BIN)
+	mpirun -n $(NB_PROC) $(RUNFLAG)  ./$(BIN) $(SAMPLE) $(WIDTH) $(HEIGHT)
 
 
