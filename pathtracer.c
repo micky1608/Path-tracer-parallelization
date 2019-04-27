@@ -14,6 +14,7 @@
 #include <stdlib.h> 
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
 #include <sys/time.h>
 #include <sys/stat.h>  /* pour mkdir    */ 
 #include <unistd.h>    /* pour getuid   */
@@ -21,6 +22,7 @@
 #include <pwd.h>       /* pour getpwuid */
 #include <time.h>
 #include <unistd.h> // pour gethostname
+#include <immintrin.h>
 
 #define SIZE_BLOCK 32	// nombre de pixels contenus dans un bloc
 #define NBTHREAD 4
@@ -82,11 +84,46 @@ static inline void zero(double *x)
 		x[i] = 0;
 } 
 
+/* ************************************************************************************************************** */
+
+__m256d x_avx, y_avx, alpha_avx, res_avx, res2_avx;
+
+/*
+* Meme fonction que axpy en vectorisé. 
+* ALPHA : {alpha,alpha,alpha,alpha}
+* X : { subpixel_radiance[0]_valeur_0, subpixel_radiance[0]_valeur_1, subpixel_radiance[0]_valeur_2,
+				subpixel_radiance[1]_valeur_0, subpixel_radiance[1]_valeur_1, subpixel_radiance[1]_valeur_2,
+				subpixel_radiance[2]_valeur_0, subpixel_radiance[2]_valeur_1, subpixel_radiance[2]_valeur_2,
+				subpixel_radiance[3]_valeur_0, subpixel_radiance[3]_valeur_1, subpixel_radiance[3]_valeur_2 } -> 12 double 
+* Y : {	0, 0, 0 ,
+				0, 0, 0 ,
+				0, 0, 0 , 
+				0, 0, 0 , } -> 12 double
+*/
+static inline void axpy_vect(double *ALPHA, const double *X, double *Y) {
+	
+	alpha_avx = _mm256_load_pd(ALPHA);
+	
+	for(int i=0 ; i<3 ; i++) {
+		x_avx = _mm256_load_pd(X + 4*i);
+		y_avx = _mm256_load_pd(Y + 4*i);
+
+		res_avx = _mm256_mul_pd(alpha_avx , x_avx);
+		res2_avx = _mm256_add_pd(res_avx , y_avx);
+
+		_mm256_store_pd(Y + 4*i , res2_avx);
+	}
+	
+}
+
+
 static inline void axpy(double alpha, const double *x, double *y)
 {
-	for (int i = 0; i < 3; i++)
+ 	for (int i = 0; i < 3; i++)
 		y[i] += alpha * x[i];
 } 
+
+/* ************************************************************************************************************** */
 
 static inline void scal(double alpha, double *x)
 {
@@ -695,17 +732,26 @@ int main(int argc, char **argv)
 				y = (k + (current_task_start * SIZE_BLOCK)) % w;
 
 				//unsigned short PRNG_state[3] = {0, 0, i*i*i};
-				unsigned short PRNG_state[3] = {0, 0, x*x*x};
+				unsigned short PRNG_state[12] = {0, 0, x*x*x};
 
 				/* calcule la luminance d'un pixel, avec sur-échantillonnage 2x2 */
 
-				double pixel_radiance[3] = {0, 0, 0};
+				double pixel_radiance[3] = {0 , 0 , 0}; 
+
+				double pixel_radiance_extended[12] __attribute__((aligned(32)));
+				for(int l=0 ; l<12 ; l++) pixel_radiance_extended[l] = 0;
+
+				double subpixel_radiance[12] __attribute__((aligned(32)));
+				for(int l=0 ; l<12 ; l++) subpixel_radiance[l] = 0;
+
+				double ALPHA[4] __attribute__((aligned(32)));
+				ALPHA[0] = ALPHA[1] = ALPHA[2] = ALPHA[3] = 0.25;
 
 				// Deux boucles imbriquées pour les sous pixels
 				for (int sub_i = 0; sub_i < 2; sub_i++) {
 						for (int sub_j = 0; sub_j < 2; sub_j++) {
-
-							double subpixel_radiance[3] = {0, 0, 0};
+							
+							int c = sub_i*2 + sub_j;
 
 							/* simulation de monte-carlo : on effectue plein de lancers de rayons et on moyenne */
 							for (int s = 0; s < samples; s++) { 
@@ -734,18 +780,20 @@ int main(int argc, char **argv)
 								radiance(ray_origin, ray_direction, 0, PRNG_state, sample_radiance);
 								
 								/* fait la moyenne sur tous les rayons */
-								axpy(1. / samples, sample_radiance, subpixel_radiance);
+								axpy(1. / samples, sample_radiance, subpixel_radiance + 3*c);
 							}
 
-							clamp(subpixel_radiance);
+							clamp(subpixel_radiance + 3*c);
 							
 							/* fait la moyenne sur les 4 sous-pixels */
-							axpy(0.25, subpixel_radiance, pixel_radiance);
+							//axpy(0.25, subpixel_radiance + 3*c, pixel_radiance);
 							
 						}
 					}
 
-					
+					axpy_vect(ALPHA , subpixel_radiance , pixel_radiance_extended);
+					for(int i=0 ; i<12 ; i++) pixel_radiance[i%3] += pixel_radiance_extended[i];
+		
 
 					// ligne originale 
 					// copy(pixel_radiance, image + 3 * ((h - 1 - i) * w + j)); // <-- retournement vertical
