@@ -125,6 +125,9 @@ static inline double avx_dot(const avx a, const avx b)
 // [c2, c0, c1] = [a0, a1, a2]*[b1, b2, b0] - [b0, b1, b2]*[a1, a2, a0]
 #define avx_cross(a, b, c) (c = _mm256_permute_pd(_mm256_fmsub_pd(a, _mm256_permute_pd(b,120), _mm256_mul_pd(b,_mm256_permute_pd(a,120))), 156))
 
+//Copie les 3 plus hauts doubles du registre avx2 à l'emplacement donne
+#define avx_copy3(x, mem) (_mm256_maskstore_pd(mem, _mm256_set_epi64x((__uint64_t)__UINT64_MAX__,(__uint64_t)__UINT64_MAX__,(__uint64_t)__UINT64_MAX__,0), x)) 
+
 
 /********** micro BLAS LEVEL-1 + quelques fonctions non-standard **************/
 static inline void copy(const double *x, double *y)
