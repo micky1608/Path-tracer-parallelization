@@ -70,23 +70,78 @@ struct Sphere spheres[] = {
    {5,    {50,      75,         81.6},      {},           {0, .682, .999}, DIFF, -1}, // occlusion, mirror
 }; 
 
+/************ Definition des fonctions simd ********************************/
+#define al __attribute__((aligned(32)))
+
+typedef __m256d avx;
+#define avx_load(x) _mm256_load_pd(x)
+#define avx_store(dst, src) _mm256_store_pd(dst, src)
+
+// Extrait la i-eme valeur du registre
+#define avx_extract(x, i) (((double*)&x)[i])
+
+// Remplace la 4e coordonnee par 0
+#define avx_discard_last(x) (avx_extract(x, 3) = 0.0)
+
+// Swap 128 bits d'un avx
+#define avx_swap128(x) _mm256_permute2f128_pd(x,x,1)
+
+// Definit un registre simd contenant {d,d,d,d}
+#define avx_scalar(d) _mm256_set1_pd(d)
+
+// Definit un registre simd contenant {0,0,0,0}
+#define avx_zero(x) (x = _mm256_setzero_pd())
+
+// Definit un registre simd etant la copie de x
+#define avx_copy(x, y) (y = _mm256_set_m128d(((__m128d*)&x)[0], ((__m128d*)&x)[1]))
+
+// y += a*x
+#define avx_axpy(a, x, y) (y = _mm256_fmadd_pd(avx_scalar(a), x, y))
+
+// x *= a
+#define avx_scal(a, x) (x = _mm256_mul_pd(avx_scalar(a), x))
+
+// z = x*y
+#define avx_mul(x, y, z) (z = _mm256_mul_pd(x,y))
+
+// x[i] = x[i] > 1 ? 1 : x[i] < 0 : 0 : x[i]
+#define avx_clamp(x) (x = _mm256_min_pd(_mm256_max_pd(x, _mm256_setzero_pd()), avx_scalar(1.0)))
+
+// dot(a, b)
+static inline double avx_dot(const avx a, const avx b)
+{
+	static avx temp;
+	avx_mul(a,b,temp);
+	return avx_extract(temp, 0) + avx_extract(temp, 1) + avx_extract(temp, 2);
+}
+
+// norm(x)
+#define avx_norm(x) (sqrt(avx_dot(x,x)))
+
+// normalize(x)
+#define avx_normalize(x) (avx_scal(1.0/avx_norm(x), x))
+
+// cross(a,b,c)
+// [c2, c0, c1] = [a0, a1, a2]*[b1, b2, b0] - [b0, b1, b2]*[a1, a2, a0]
+#define avx_cross(a, b, c) (c = _mm256_permute_pd(_mm256_fmsub_pd(a, _mm256_permute_pd(b,120), _mm256_mul_pd(b,_mm256_permute_pd(a,120))), 156))
+
 
 /********** micro BLAS LEVEL-1 + quelques fonctions non-standard **************/
 static inline void copy(const double *x, double *y)
 {
 	for (int i = 0; i < 3; i++)
 		y[i] = x[i];
-} 
+}
 
 static inline void zero(double *x)
 {
 	for (int i = 0; i < 3; i++)
 		x[i] = 0;
-} 
+}
 
 /* ************************************************************************************************************** */
 
-__m256d x_avx, y_avx, alpha_avx, res_avx, res2_avx;
+avx x_avx, y_avx, alpha_avx, res_avx, res2_avx;
 
 /*
 * Meme fonction que axpy en vectorisé. 
@@ -121,7 +176,9 @@ static inline void axpy(double alpha, const double *x, double *y)
 {
  	for (int i = 0; i < 3; i++)
 		y[i] += alpha * x[i];
-} 
+}
+
+
 
 /* ************************************************************************************************************** */
 
