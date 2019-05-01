@@ -126,7 +126,7 @@ static inline double avx_dot(const avx a, const avx b)
 #define avx_cross(a, b, c) (c = _mm256_permute_pd(_mm256_fmsub_pd(a, _mm256_permute_pd(b,120), _mm256_mul_pd(b,_mm256_permute_pd(a,120))), 156))
 
 //Copie les 3 plus hauts doubles du registre avx2 à l'emplacement donne
-#define avx_copy3(x, mem) (_mm256_maskstore_pd(mem, _mm256_set_epi64x((__uint64_t)__UINT64_MAX__,(__uint64_t)__UINT64_MAX__,(__uint64_t)__UINT64_MAX__,0), x)) 
+#define avx_copy3(x, mem) (_mm256_maskstore_pd(mem, _mm256_set_epi64x((__int64_t)__INT64_MAX__,(__int64_t)__INT64_MAX__,(__int64_t)__INT64_MAX__,0), x)) 
 
 
 /********** micro BLAS LEVEL-1 + quelques fonctions non-standard **************/
@@ -796,8 +796,14 @@ int main(int argc, char **argv)
 
 				/* calcule la luminance d'un pixel, avec sur-échantillonnage 2x2 */
 
-				double pixel_radiance[3] = {0 , 0 , 0}; 
+				double pixel_radiance[3] al;
+				zero(pixel_radiance);
+				avx avx_pixel_radiance;
+				avx_pixel_radiance = avx_load(pixel_radiance);
 
+			
+
+				/*
 				double pixel_radiance_extended[12] __attribute__((aligned(32)));
 				for(int l=0 ; l<12 ; l++) pixel_radiance_extended[l] = 0;
 
@@ -806,12 +812,19 @@ int main(int argc, char **argv)
 
 				double ALPHA[4] __attribute__((aligned(32)));
 				ALPHA[0] = ALPHA[1] = ALPHA[2] = ALPHA[3] = 0.25;
+				*/
+
+				
 
 				// Deux boucles imbriquées pour les sous pixels
 				for (int sub_i = 0; sub_i < 2; sub_i++) {
 						for (int sub_j = 0; sub_j < 2; sub_j++) {
 							
-							int c = sub_i*2 + sub_j;
+							//int c = sub_i*2 + sub_j;
+
+							double subpixel_radiance[3] al;
+							zero(subpixel_radiance);
+							avx avx_subpixel_radiance;
 
 							/* simulation de monte-carlo : on effectue plein de lancers de rayons et on moyenne */
 							for (int s = 0; s < samples; s++) { 
@@ -840,20 +853,27 @@ int main(int argc, char **argv)
 								radiance(ray_origin, ray_direction, 0, PRNG_state, sample_radiance);
 								
 								/* fait la moyenne sur tous les rayons */
-								axpy(1. / samples, sample_radiance, subpixel_radiance + 3*c);
+								axpy(1. / samples, sample_radiance, subpixel_radiance);
 							}
-
-							clamp(subpixel_radiance + 3*c);
+							
+							avx_subpixel_radiance = avx_load(subpixel_radiance);
+							avx_discard_last(avx_subpixel_radiance);
+							avx_clamp(avx_subpixel_radiance);
+							avx_copy3(avx_subpixel_radiance , subpixel_radiance);
 							
 							/* fait la moyenne sur les 4 sous-pixels */
 							//axpy(0.25, subpixel_radiance + 3*c, pixel_radiance);
+							avx_axpy(0.25, avx_subpixel_radiance , avx_pixel_radiance);
 							
 						}
 					}
 
+					avx_copy3(avx_pixel_radiance , pixel_radiance);
+
+					/*
 					axpy_vect(ALPHA , subpixel_radiance , pixel_radiance_extended);
 					for(int i=0 ; i<12 ; i++) pixel_radiance[i%3] += pixel_radiance_extended[i];
-		
+					*/
 
 					// ligne originale 
 					// copy(pixel_radiance, image + 3 * ((h - 1 - i) * w + j)); // <-- retournement vertical
