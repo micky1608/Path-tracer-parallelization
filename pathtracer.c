@@ -144,8 +144,6 @@ static inline void zero(double *x)
 
 /* ************************************************************************************************************** */
 
-
-
 static inline void axpy(double alpha, const double *x, double *y)
 {
  	for (int i = 0; i < 3; i++)
@@ -256,61 +254,28 @@ void radiance(const double *ray_origin, const double *ray_direction, int depth, 
 		return; 
 	}
 	const struct Sphere *obj = &spheres[id];
-
-	avx 	avx_ray_origin = avx_load(ray_origin), 
-				avx_ray_direction = avx_load(ray_direction);
-
+	
 	/* point d'intersection du rayon et de la sphère */
-	double x[3] al;
-	avx avx_x = avx_load(x);;
-
-	//copy(ray_origin, x); 
-	avx_copy(avx_ray_origin , avx_x);
-
-
-	//axpy(t, ray_direction, x);
-	
-	avx_ray_direction = avx_load(ray_direction);
-	avx_axpy(t,avx_ray_direction,avx_x);
-	
+	double x[3];
+	copy(ray_origin, x);
+	axpy(t, ray_direction, x);
 	
 	/* vecteur normal à la sphere, au point d'intersection */
-	double n[3] al;  
-	avx avx_n = avx_load(n);
-	
-	//copy(x, n);
-	avx_copy(avx_x,avx_n);
-
-	//axpy(-1, obj->position, n);
-	
-	avx avx_pos = avx_load(obj->position);
-	avx_axpy(-1,avx_pos , avx_n);
-	
-	//normalize(n);
-	avx_normalize(avx_n);
+	double n[3];  
+	copy(x, n);
+	axpy(-1, obj->position, n);
+	normalize(n);
 	
 	/* vecteur normal, orienté dans le sens opposé au rayon 
 	   (vers l'extérieur si le rayon entre, vers l'intérieur s'il sort) */
-	double nl[3] al;
-	avx avx_nl = avx_load(nl);
-
-	//copy(n, nl);
-	avx_copy(avx_n,avx_nl);
-
-/*
+	double nl[3];
+	copy(n, nl);
 	if (dot(n, ray_direction) > 0)
 		scal(-1, nl);
-*/
-	if(avx_dot(avx_n , avx_ray_direction) > 0) avx_scal(-1, avx_nl);
-
 	
 	/* couleur de la sphere */
-	double f[3] al;
-	avx avx_f , avx_color = avx_load(obj->color);
-
-	//copy(obj->color, f);
-	avx_copy(avx_color , avx_f);
-
+	double f[3];
+	copy(obj->color, f);
 	double p = obj->max_reflexivity;
 
 	/* processus aléatoire : au-delà d'une certaine profondeur,
@@ -319,26 +284,12 @@ void radiance(const double *ray_origin, const double *ray_direction, int depth, 
 	depth++;
 	if (depth > KILL_DEPTH) {
 		if (erand48(PRNG_state) < p) {
-			//scal(1 / p, f); 
-			avx_scal(1/p , avx_f);
+			scal(1 / p, f); 
 		} else {
 			copy(obj->emission, out);
 			return;
 		}
 	}
-
-		avx_copy3(avx_ray_origin , ray_origin);
-		avx_copy3(avx_ray_direction , ray_direction);
-		avx_copy3(avx_x , x);
-		avx_copy3(avx_n , n);
-		avx_copy3(avx_pos , obj->position);
-		avx_copy3(avx_nl , nl);
-		avx_copy3(avx_f , f);
-		avx_copy3(avx_color , obj->color);
-		/*avx_copy3(avx_u , u);
-		avx_copy3(avx_uw , uw);
-		avx_copy3(avx_w , w);*/
-
 
 	/* Cas de la réflection DIFFuse (= non-brillante). 
 	   On récupère la luminance en provenance de l'ensemble de l'univers. 
@@ -350,37 +301,22 @@ void radiance(const double *ray_origin, const double *ray_direction, int depth, 
 		double r2 = erand48(PRNG_state);             /* distance au centre aléatoire */
 		double r2s = sqrt(r2); 
 		
-		double w[3] al;   /* vecteur normal */
-		avx avx_w;
-
+		double w[3];   /* vecteur normal */
 		copy(nl, w);
-		//avx_copy(avx_nl , avx_w);
 		
-		double u[3] al;   /* u est orthogonal à w */
-		avx avx_u;
-
-		double uw[3] al;
-		zero(uw);
-
+		double u[3];   /* u est orthogonal à w */
+		double uw[3] = {0, 0, 0};
 		if (fabs(w[0]) > .1)
 			uw[1] = 1;
 		else
 			uw[0] = 1;
-
-		avx avx_uw = avx_load(uw);
-
 		cross(uw, w, u);
-		//avx_cross(avx_uw,avx_w,avx_u);
-
 		normalize(u);
-		//avx_normalize(avx_u);
-
-
 		
-		double v[3] al;   /* v est orthogonal à u et w */
+		double v[3];   /* v est orthogonal à u et w */
 		cross(w, u, v);
 		
-		double d[3] al;   /* d est le vecteur incident aléatoire, selon la bonne distribution */
+		double d[3];   /* d est le vecteur incident aléatoire, selon la bonne distribution */
 		zero(d);
 		axpy(cos(r1) * r2s, u, d);
 		axpy(sin(r1) * r2s, v, d);
@@ -388,27 +324,25 @@ void radiance(const double *ray_origin, const double *ray_direction, int depth, 
 		normalize(d);
 		
 		/* calcule récursivement la luminance du rayon incident */
-		double rec[3] al;
+		double rec[3];
 		radiance(x, d, depth, PRNG_state, rec);
 		
 		/* pondère par la couleur de la sphère, prend en compte l'emissivité */
 		mul(f, rec, out);
 		axpy(1, obj->emission, out);
-
-
 		return;
 	}
 
 	/* dans les deux autres cas (réflection parfaite / refraction), on considère le rayon
 	   réfléchi par la spère */
 
-	double reflected_dir[3] al;
+	double reflected_dir[3];
 	copy(ray_direction, reflected_dir);
 	axpy(-2 * dot(n, ray_direction), n, reflected_dir);
 
 	/* cas de la reflection SPEculaire parfaire (==mirroir) */
 	if (obj->refl == SPEC) { 
-		double rec[3] al;
+		double rec[3];
 		/* calcule récursivement la luminance du rayon réflechi */
 		radiance(x, reflected_dir, depth, PRNG_state, rec);
 		/* pondère par la couleur de la sphère, prend en compte l'emissivité */
@@ -428,7 +362,7 @@ void radiance(const double *ray_origin, const double *ray_direction, int depth, 
 	   il rebondit entièrement */
 	double cos2t = 1 - nnt * nnt * (1 - ddn * ddn);
 	if (cos2t < 0) {
-		double rec[3] al;
+		double rec[3];
 		/* calcule seulement le rayon réfléchi */
 		radiance(x, reflected_dir, depth, PRNG_state, rec);
 		mul(f, rec, out);
@@ -437,7 +371,7 @@ void radiance(const double *ray_origin, const double *ray_direction, int depth, 
 	}
 	
 	/* calcule la direction du rayon réfracté */
-	double tdir[3] al;
+	double tdir[3];
 	zero(tdir);
 	axpy(nnt, ray_direction, tdir);
 	axpy(-(into ? 1 : -1) * (ddn * nnt + sqrt(cos2t)), n, tdir);
@@ -453,7 +387,7 @@ void radiance(const double *ray_origin, const double *ray_direction, int depth, 
 	/* au-dela d'une certaine profondeur, on choisit aléatoirement si
 	   on calcule le rayon réfléchi ou bien le rayon réfracté. En dessous du
 	   seuil, on calcule les deux. */
-	double rec[3] al;
+	double rec[3];
 	if (depth > SPLIT_DEPTH) {
 		double P = .25 + .5 * Re;             /* probabilité de réflection */
 		if (erand48(PRNG_state) < P) {
@@ -466,7 +400,7 @@ void radiance(const double *ray_origin, const double *ray_direction, int depth, 
 			scal(TP, rec);
 		}
 	} else {
-		double rec_re[3], rec_tr[3] al;
+		double rec_re[3], rec_tr[3];
 		radiance(x, reflected_dir, depth, PRNG_state, rec_re);
 		radiance(x, tdir, depth, PRNG_state, rec_tr);
 		zero(rec);
