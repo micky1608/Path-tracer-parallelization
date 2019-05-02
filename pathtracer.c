@@ -40,9 +40,9 @@ enum Refl_t {DIFF, SPEC, REFR};   /* types de matériaux (DIFFuse, SPECular, REF
 
 struct Sphere { 
 	double radius; 
-	double position[3];
-	double emission[3];     /* couleur émise (=source de lumière) */
-	double color[3];        /* couleur de l'objet RGB (diffusion, refraction, ...) */
+	double position[3] __attribute__((aligned(32)));
+	double emission[3] __attribute__((aligned(32)));     /* couleur émise (=source de lumière) */
+	double color[3] __attribute__((aligned(32)));        /* couleur de l'objet RGB (diffusion, refraction, ...) */
 	enum Refl_t refl;       /* type de reflection */
 	double max_reflexivity;
 };
@@ -93,7 +93,7 @@ typedef __m256d avx;
 #define avx_zero(x) (x = _mm256_setzero_pd())
 
 // Definit un registre simd etant la copie de x
-#define avx_copy(x, y) (y = _mm256_set_m128d(((__m128d*)&x)[0], ((__m128d*)&x)[1]))
+#define avx_copy(x, y) (y = _mm256_set_pd(avx_extract(x,3), avx_extract(x,2), avx_extract(x,1),avx_extract(x,0)))
 
 // y += a*x
 #define avx_axpy(a, x, y) (y = _mm256_fmadd_pd(avx_scalar(a), x, y))
@@ -123,10 +123,10 @@ static inline double avx_dot(const avx a, const avx b)
 
 // cross(a,b,c)
 // [c2, c0, c1] = [a0, a1, a2]*[b1, b2, b0] - [b0, b1, b2]*[a1, a2, a0]
-#define avx_cross(a, b, c) (c = _mm256_permute_pd(_mm256_fmsub_pd(a, _mm256_permute_pd(b,120), _mm256_mul_pd(b,_mm256_permute_pd(a,120))), 156))
+#define avx_cross(a, b, c) (c = _mm256_permute4x64_pd(_mm256_fmsub_pd(a,_mm256_permute4x64_pd(b,201),_mm256_mul_pd(b,_mm256_permute4x64_pd(a,201))),201)) 
 
 //Copie les 3 plus hauts doubles du registre avx2 à l'emplacement donne
-#define avx_copy3(x, mem) (_mm256_maskstore_pd(mem, _mm256_set_epi64x((__int64_t)__INT64_MAX__,(__int64_t)__INT64_MAX__,(__int64_t)__INT64_MAX__,0), x)) 
+#define avx_copy3(x, mem) (_mm256_maskstore_pd(mem, _mm256_set_epi64x(0,(__int64_t)0xFFFFFFFFFFFFFFFF,(__int64_t)0xFFFFFFFFFFFFFFFF,(__int64_t)0xFFFFFFFFFFFFFFFF), x)) 
 
 
 /********** micro BLAS LEVEL-1 + quelques fonctions non-standard **************/
@@ -144,35 +144,6 @@ static inline void zero(double *x)
 
 /* ************************************************************************************************************** */
 
-avx x_avx, y_avx, alpha_avx, res_avx, res2_avx;
-
-/*
-* Meme fonction que axpy en vectorisé. 
-* ALPHA : {alpha,alpha,alpha,alpha}
-* X : { subpixel_radiance[0]_valeur_0, subpixel_radiance[0]_valeur_1, subpixel_radiance[0]_valeur_2,
-				subpixel_radiance[1]_valeur_0, subpixel_radiance[1]_valeur_1, subpixel_radiance[1]_valeur_2,
-				subpixel_radiance[2]_valeur_0, subpixel_radiance[2]_valeur_1, subpixel_radiance[2]_valeur_2,
-				subpixel_radiance[3]_valeur_0, subpixel_radiance[3]_valeur_1, subpixel_radiance[3]_valeur_2 } -> 12 double 
-* Y : {	0, 0, 0 ,
-				0, 0, 0 ,
-				0, 0, 0 , 
-				0, 0, 0 , } -> 12 double
-*/
-static inline void axpy_vect(double *ALPHA, const double *X, double *Y) {
-	
-	alpha_avx = _mm256_load_pd(ALPHA);
-	
-	for(int i=0 ; i<3 ; i++) {
-		x_avx = _mm256_load_pd(X + 4*i);
-		y_avx = _mm256_load_pd(Y + 4*i);
-
-		res_avx = _mm256_mul_pd(alpha_avx , x_avx);
-		res2_avx = _mm256_add_pd(res_avx , y_avx);
-
-		_mm256_store_pd(Y + 4*i , res2_avx);
-	}
-	
-}
 
 
 static inline void axpy(double alpha, const double *x, double *y)
@@ -180,8 +151,6 @@ static inline void axpy(double alpha, const double *x, double *y)
  	for (int i = 0; i < 3; i++)
 		y[i] += alpha * x[i];
 }
-
-
 
 /* ************************************************************************************************************** */
 
@@ -237,7 +206,7 @@ static inline void clamp(double *x)
 // returns distance, 0 if nohit 
 double sphere_intersect(const struct Sphere *s, const double *ray_origin, const double *ray_direction)
 { 
-	double op[3];
+	double op[3] al;
 	// Solve t^2*d.d + 2*t*(o-p).d + (o-p).(o-p)-R^2 = 0 
 	copy(s->position, op);
 	axpy(-1, ray_origin, op);
@@ -287,28 +256,61 @@ void radiance(const double *ray_origin, const double *ray_direction, int depth, 
 		return; 
 	}
 	const struct Sphere *obj = &spheres[id];
-	
+
+	avx 	avx_ray_origin = avx_load(ray_origin), 
+				avx_ray_direction = avx_load(ray_direction);
+
 	/* point d'intersection du rayon et de la sphère */
-	double x[3];
-	copy(ray_origin, x);
-	axpy(t, ray_direction, x);
+	double x[3] al;
+	avx avx_x = avx_load(x);;
+
+	//copy(ray_origin, x); 
+	avx_copy(avx_ray_origin , avx_x);
+
+
+	//axpy(t, ray_direction, x);
+	
+	avx_ray_direction = avx_load(ray_direction);
+	avx_axpy(t,avx_ray_direction,avx_x);
+	
 	
 	/* vecteur normal à la sphere, au point d'intersection */
-	double n[3];  
-	copy(x, n);
-	axpy(-1, obj->position, n);
-	normalize(n);
+	double n[3] al;  
+	avx avx_n = avx_load(n);
+	
+	//copy(x, n);
+	avx_copy(avx_x,avx_n);
+
+	//axpy(-1, obj->position, n);
+	
+	avx avx_pos = avx_load(obj->position);
+	avx_axpy(-1,avx_pos , avx_n);
+	
+	//normalize(n);
+	avx_normalize(avx_n);
 	
 	/* vecteur normal, orienté dans le sens opposé au rayon 
 	   (vers l'extérieur si le rayon entre, vers l'intérieur s'il sort) */
-	double nl[3];
-	copy(n, nl);
+	double nl[3] al;
+	avx avx_nl = avx_load(nl);
+
+	//copy(n, nl);
+	avx_copy(avx_n,avx_nl);
+
+/*
 	if (dot(n, ray_direction) > 0)
 		scal(-1, nl);
+*/
+	if(avx_dot(avx_n , avx_ray_direction) > 0) avx_scal(-1, avx_nl);
+
 	
 	/* couleur de la sphere */
-	double f[3];
-	copy(obj->color, f);
+	double f[3] al;
+	avx avx_f , avx_color = avx_load(obj->color);
+
+	//copy(obj->color, f);
+	avx_copy(avx_color , avx_f);
+
 	double p = obj->max_reflexivity;
 
 	/* processus aléatoire : au-delà d'une certaine profondeur,
@@ -317,12 +319,26 @@ void radiance(const double *ray_origin, const double *ray_direction, int depth, 
 	depth++;
 	if (depth > KILL_DEPTH) {
 		if (erand48(PRNG_state) < p) {
-			scal(1 / p, f); 
+			//scal(1 / p, f); 
+			avx_scal(1/p , avx_f);
 		} else {
 			copy(obj->emission, out);
 			return;
 		}
 	}
+
+		avx_copy3(avx_ray_origin , ray_origin);
+		avx_copy3(avx_ray_direction , ray_direction);
+		avx_copy3(avx_x , x);
+		avx_copy3(avx_n , n);
+		avx_copy3(avx_pos , obj->position);
+		avx_copy3(avx_nl , nl);
+		avx_copy3(avx_f , f);
+		avx_copy3(avx_color , obj->color);
+		/*avx_copy3(avx_u , u);
+		avx_copy3(avx_uw , uw);
+		avx_copy3(avx_w , w);*/
+
 
 	/* Cas de la réflection DIFFuse (= non-brillante). 
 	   On récupère la luminance en provenance de l'ensemble de l'univers. 
@@ -334,22 +350,37 @@ void radiance(const double *ray_origin, const double *ray_direction, int depth, 
 		double r2 = erand48(PRNG_state);             /* distance au centre aléatoire */
 		double r2s = sqrt(r2); 
 		
-		double w[3];   /* vecteur normal */
+		double w[3] al;   /* vecteur normal */
+		avx avx_w;
+
 		copy(nl, w);
+		//avx_copy(avx_nl , avx_w);
 		
-		double u[3];   /* u est orthogonal à w */
-		double uw[3] = {0, 0, 0};
+		double u[3] al;   /* u est orthogonal à w */
+		avx avx_u;
+
+		double uw[3] al;
+		zero(uw);
+
 		if (fabs(w[0]) > .1)
 			uw[1] = 1;
 		else
 			uw[0] = 1;
+
+		avx avx_uw = avx_load(uw);
+
 		cross(uw, w, u);
+		//avx_cross(avx_uw,avx_w,avx_u);
+
 		normalize(u);
+		//avx_normalize(avx_u);
+
+
 		
-		double v[3];   /* v est orthogonal à u et w */
+		double v[3] al;   /* v est orthogonal à u et w */
 		cross(w, u, v);
 		
-		double d[3];   /* d est le vecteur incident aléatoire, selon la bonne distribution */
+		double d[3] al;   /* d est le vecteur incident aléatoire, selon la bonne distribution */
 		zero(d);
 		axpy(cos(r1) * r2s, u, d);
 		axpy(sin(r1) * r2s, v, d);
@@ -357,25 +388,27 @@ void radiance(const double *ray_origin, const double *ray_direction, int depth, 
 		normalize(d);
 		
 		/* calcule récursivement la luminance du rayon incident */
-		double rec[3];
+		double rec[3] al;
 		radiance(x, d, depth, PRNG_state, rec);
 		
 		/* pondère par la couleur de la sphère, prend en compte l'emissivité */
 		mul(f, rec, out);
 		axpy(1, obj->emission, out);
+
+
 		return;
 	}
 
 	/* dans les deux autres cas (réflection parfaite / refraction), on considère le rayon
 	   réfléchi par la spère */
 
-	double reflected_dir[3];
+	double reflected_dir[3] al;
 	copy(ray_direction, reflected_dir);
 	axpy(-2 * dot(n, ray_direction), n, reflected_dir);
 
 	/* cas de la reflection SPEculaire parfaire (==mirroir) */
 	if (obj->refl == SPEC) { 
-		double rec[3];
+		double rec[3] al;
 		/* calcule récursivement la luminance du rayon réflechi */
 		radiance(x, reflected_dir, depth, PRNG_state, rec);
 		/* pondère par la couleur de la sphère, prend en compte l'emissivité */
@@ -395,7 +428,7 @@ void radiance(const double *ray_origin, const double *ray_direction, int depth, 
 	   il rebondit entièrement */
 	double cos2t = 1 - nnt * nnt * (1 - ddn * ddn);
 	if (cos2t < 0) {
-		double rec[3];
+		double rec[3] al;
 		/* calcule seulement le rayon réfléchi */
 		radiance(x, reflected_dir, depth, PRNG_state, rec);
 		mul(f, rec, out);
@@ -404,7 +437,7 @@ void radiance(const double *ray_origin, const double *ray_direction, int depth, 
 	}
 	
 	/* calcule la direction du rayon réfracté */
-	double tdir[3];
+	double tdir[3] al;
 	zero(tdir);
 	axpy(nnt, ray_direction, tdir);
 	axpy(-(into ? 1 : -1) * (ddn * nnt + sqrt(cos2t)), n, tdir);
@@ -420,7 +453,7 @@ void radiance(const double *ray_origin, const double *ray_direction, int depth, 
 	/* au-dela d'une certaine profondeur, on choisit aléatoirement si
 	   on calcule le rayon réfléchi ou bien le rayon réfracté. En dessous du
 	   seuil, on calcule les deux. */
-	double rec[3];
+	double rec[3] al;
 	if (depth > SPLIT_DEPTH) {
 		double P = .25 + .5 * Re;             /* probabilité de réflection */
 		if (erand48(PRNG_state) < P) {
@@ -433,7 +466,7 @@ void radiance(const double *ray_origin, const double *ray_direction, int depth, 
 			scal(TP, rec);
 		}
 	} else {
-		double rec_re[3], rec_tr[3];
+		double rec_re[3], rec_tr[3] al;
 		radiance(x, reflected_dir, depth, PRNG_state, rec_re);
 		radiance(x, tdir, depth, PRNG_state, rec_tr);
 		zero(rec);
@@ -512,14 +545,28 @@ int main(int argc, char **argv)
 	static const double CST = 0.5135;  /* ceci défini l'angle de vue */
 	double camera_position[3] = {50, 52, 295.6};
 	double camera_direction[3] = {0, -0.042612, -1};
-	normalize(camera_direction);
+
+	avx avx_camera_direction;
+	avx_camera_direction = avx_load(camera_direction);
+	avx_normalize(avx_camera_direction);
+	avx_copy3(avx_camera_direction,camera_direction);
+	//normalize(camera_direction);
 
 	/* incréments pour passer d'un pixel à l'autre */
 	double cx[3] = {w * CST / h, 0, 0};    
-	double cy[3];
+	double cy[3] al;
+
+	avx avx_cy;
+	
 	cross(cx, camera_direction, cy);  /* cy est orthogonal à cx ET à la direction dans laquelle regarde la caméra */
-	normalize(cy);
-	scal(CST, cy);
+
+	//normalize(cy);
+	//scal(CST, cy);
+	avx_cy = avx_load(cy);
+	avx_normalize(avx_cy);
+	avx_scal(CST , avx_cy);
+	
+	avx_copy3(avx_cy , cy);
 
 	/* précalcule la norme infinie des couleurs */
 	int n = sizeof(spheres) / sizeof(struct Sphere);
@@ -833,7 +880,10 @@ int main(int argc, char **argv)
 								double dx = (r1 < 1) ? sqrt(r1) - 1 : 1 - sqrt(2 - r1); 
 								double r2 = 2 * erand48(PRNG_state);
 								double dy = (r2 < 1) ? sqrt(r2) - 1 : 1 - sqrt(2 - r2);
-								double ray_direction[3];
+								
+								double ray_direction[3] al;
+								avx avx_ray_direction;
+
 								copy(camera_direction, ray_direction);
 
 								// anciennes lignes  
@@ -842,14 +892,19 @@ int main(int argc, char **argv)
 
 								axpy(((sub_i + .5 + dy) / 2 + x) / h - .5, cy, ray_direction);
 								axpy(((sub_j + .5 + dx) / 2 + y) / w - .5, cx, ray_direction);
-								normalize(ray_direction);
 
-								double ray_origin[3];
+								avx_ray_direction = avx_load(ray_direction);
+								avx_normalize(avx_ray_direction);
+								avx_copy3(avx_ray_direction , ray_direction);
+								//normalize(ray_direction);
+
+								double ray_origin[3] al;
+								zero(ray_origin);
 								copy(camera_position, ray_origin);
 								axpy(140, ray_direction, ray_origin);
 								
 								/* estime la lumiance qui arrive sur la caméra par ce rayon */
-								double sample_radiance[3];
+								double sample_radiance[3] al;
 								radiance(ray_origin, ray_direction, 0, PRNG_state, sample_radiance);
 								
 								/* fait la moyenne sur tous les rayons */
