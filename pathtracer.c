@@ -204,7 +204,7 @@ static inline void clamp(double *x)
 
 /******************************* calcul des intersections rayon / sphere *************************************/
 
-/*  
+
 // returns distance, 0 if nohit 
 double sphere_intersect(const struct Sphere *s, const double *ray_origin, const double *ray_direction)
 { 
@@ -232,10 +232,10 @@ double sphere_intersect(const struct Sphere *s, const double *ray_origin, const 
 			return 0;  // cas bizarre, racine double, etc.
 	}
 }
-*/
+
 
 // returns distance, 0 if nohit 
-double sphere_intersect(const struct Sphere *s, avx avx_ray_origin, avx avx_ray_direction)
+double avx_sphere_intersect(const struct Sphere *s, avx avx_ray_origin, avx avx_ray_direction)
 { 
 	
 	//double op[3] al;
@@ -276,7 +276,7 @@ double sphere_intersect(const struct Sphere *s, avx avx_ray_origin, avx avx_ray_
 }
 
 /* ************************************************************************************************************************************************ */
-/*
+
 // détermine si le rayon intersecte l'une des spere; si oui renvoie true et fixe t, id
 bool intersect(const double *ray_origin, const double *ray_direction, double *t, int *id)
 { 
@@ -292,15 +292,15 @@ bool intersect(const double *ray_origin, const double *ray_direction, double *t,
 	}
 	return *t < inf;
 } 
-*/
 
-bool intersect(avx avx_ray_origin, avx avx_ray_direction, double *t, int *id)
+
+bool avx_intersect(avx avx_ray_origin, avx avx_ray_direction, double *t, int *id)
 { 
 	int n = sizeof(spheres) / sizeof(struct Sphere);
 	double inf = 1e20; 
 	*t = inf;
 	for (int i = 0; i < n; i++) {
-		double d = sphere_intersect(&spheres[i], avx_ray_origin, avx_ray_direction);
+		double d = avx_sphere_intersect(&spheres[i], avx_ray_origin, avx_ray_direction);
 		if ((d > 0) && (d < *t)) {
 			*t = d;
 			*id = i;
@@ -313,15 +313,24 @@ bool intersect(avx avx_ray_origin, avx avx_ray_direction, double *t, int *id)
 
 /* ************************************************************************************************************************************************ */
 /* calcule (dans out) la luminance reçue par la camera sur le rayon donné */
-void radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned short *PRNG_state, avx *avx_out)
+void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned short *PRNG_state, avx *avx_out)
 { 
 	int id = 0;                             // id de la sphère intersectée par le rayon
 	double t;                               // distance à l'intersection
-	if (!intersect(avx_ray_origin, avx_ray_direction, &t, &id)) {
+
+	double ray_origin[3] al;
+	double ray_direction[3] al;
+
+	avx_copy3(avx_ray_origin , ray_origin);
+	avx_copy3(avx_ray_direction , ray_direction);
+
+	//if (!avx_intersect(avx_ray_origin, avx_ray_direction, &t, &id)) {
+		if(!intersect(ray_origin,ray_direction,&t,&id)) {
 		//zero(out);    		// if miss, return black
 		avx_zero(*avx_out); 
 		return; 
 	}
+	
 	const struct Sphere *obj = &spheres[id];
 	
 	/* point d'intersection du rayon et de la sphère */
@@ -457,7 +466,7 @@ void radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned sho
 		avx avx_rec;
 		
 		//radiance(x, d, depth, PRNG_state, rec);
-		radiance(avx_x, avx_d, depth, PRNG_state, &avx_rec);
+		avx_radiance(avx_x, avx_d, depth, PRNG_state, &avx_rec);
 
 		/* pondère par la couleur de la sphère, prend en compte l'emissivité */
 		//mul(f, rec, out);
@@ -489,7 +498,7 @@ void radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned sho
 
 		/* calcule récursivement la luminance du rayon réflechi */
 		//radiance(x, reflected_dir, depth, PRNG_state, rec);
-		radiance(avx_x, avx_reflected_dir, depth, PRNG_state, &avx_rec);
+		avx_radiance(avx_x, avx_reflected_dir, depth, PRNG_state, &avx_rec);
 
 		/* pondère par la couleur de la sphère, prend en compte l'emissivité */
 		//mul(f, rec, out);
@@ -522,7 +531,7 @@ void radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned sho
 
 		/* calcule seulement le rayon réfléchi */
 		//radiance(x, reflected_dir, depth, PRNG_state, rec);
-		radiance(avx_x, avx_reflected_dir, depth, PRNG_state, &avx_rec);
+		avx_radiance(avx_x, avx_reflected_dir, depth, PRNG_state, &avx_rec);
 
 		//mul(f, rec, out);
 		avx_mul(avx_f , avx_rec , *avx_out);
@@ -568,7 +577,7 @@ void radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned sho
 		double P = .25 + .5 * Re;             /* probabilité de réflection */
 		if (erand48(PRNG_state) < P) {
 			//radiance(x, reflected_dir, depth, PRNG_state, rec);
-			radiance(avx_x, avx_reflected_dir, depth, PRNG_state, &avx_rec);
+			avx_radiance(avx_x, avx_reflected_dir, depth, PRNG_state, &avx_rec);
 
 			double RP = Re / P;
 			
@@ -577,7 +586,7 @@ void radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned sho
 
 		} else {
 			//radiance(x, tdir, depth, PRNG_state, rec);
-			radiance(avx_x, avx_tdir, depth, PRNG_state, &avx_rec);
+			avx_radiance(avx_x, avx_tdir, depth, PRNG_state, &avx_rec);
 
 			double TP = Tr / (1 - P); 
 			
@@ -589,10 +598,10 @@ void radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned sho
 		avx avx_rec_re, avx_rec_tr;
 
 		//radiance(x, reflected_dir, depth, PRNG_state, rec_re);
-		radiance(avx_x, avx_reflected_dir, depth, PRNG_state, &avx_rec_re);
+		avx_radiance(avx_x, avx_reflected_dir, depth, PRNG_state, &avx_rec_re);
 
 		//radiance(x, tdir, depth, PRNG_state, rec_tr);
-		radiance(avx_x, avx_tdir, depth, PRNG_state, &avx_rec_tr);
+		avx_radiance(avx_x, avx_tdir, depth, PRNG_state, &avx_rec_tr);
 
 		//zero(rec);
 		avx_zero(avx_rec);
@@ -615,6 +624,178 @@ void radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned sho
 }
 
 /* ************************************************************************************************************************************************ */
+
+void radiance(const double *ray_origin, const double *ray_direction, int depth, unsigned short *PRNG_state, double *out)
+{ 
+	int id = 0;                             // id de la sphère intersectée par le rayon
+	double t;                               // distance à l'intersection
+
+	if (!intersect(ray_origin, ray_direction, &t, &id)) {
+		zero(out);    // if miss, return black 
+		return; 
+	}
+	const struct Sphere *obj = &spheres[id];
+	
+	/* point d'intersection du rayon et de la sphère */
+	double x[3];
+	copy(ray_origin, x);
+	axpy(t, ray_direction, x);
+	
+	/* vecteur normal à la sphere, au point d'intersection */
+	double n[3];  
+	copy(x, n);
+	axpy(-1, obj->position, n);
+	normalize(n);
+	
+	/* vecteur normal, orienté dans le sens opposé au rayon 
+	   (vers l'extérieur si le rayon entre, vers l'intérieur s'il sort) */
+	double nl[3];
+	copy(n, nl);
+	if (dot(n, ray_direction) > 0)
+		scal(-1, nl);
+	
+	/* couleur de la sphere */
+	double f[3];
+	copy(obj->color, f);
+	double p = obj->max_reflexivity;
+
+	/* processus aléatoire : au-delà d'une certaine profondeur,
+	   décide aléatoirement d'arrêter la récusion. Plus l'objet est
+	   clair, plus le processus a de chance de continuer. */
+	depth++;
+	if (depth > KILL_DEPTH) {
+		if (erand48(PRNG_state) < p) {
+			scal(1 / p, f); 
+		} else {
+			copy(obj->emission, out);
+			return;
+		}
+	}
+
+	/* Cas de la réflection DIFFuse (= non-brillante). 
+	   On récupère la luminance en provenance de l'ensemble de l'univers. 
+	   Pour cela : (processus de monte-carlo) on choisit une direction
+	   aléatoire dans un certain cone, et on récupère la luminance en 
+	   provenance de cette direction. */
+	if (obj->refl == DIFF) {
+		double r1 = 2 * M_PI * erand48(PRNG_state);  /* angle aléatoire */
+		double r2 = erand48(PRNG_state);             /* distance au centre aléatoire */
+		double r2s = sqrt(r2); 
+		
+		double w[3];   /* vecteur normal */
+		copy(nl, w);
+		
+		double u[3];   /* u est orthogonal à w */
+		double uw[3] = {0, 0, 0};
+		if (fabs(w[0]) > .1)
+			uw[1] = 1;
+		else
+			uw[0] = 1;
+		cross(uw, w, u);
+		normalize(u);
+		
+		double v[3];   /* v est orthogonal à u et w */
+		cross(w, u, v);
+		
+		double d[3];   /* d est le vecteur incident aléatoire, selon la bonne distribution */
+		zero(d);
+		axpy(cos(r1) * r2s, u, d);
+		axpy(sin(r1) * r2s, v, d);
+		axpy(sqrt(1 - r2), w, d);
+		normalize(d);
+		
+		/* calcule récursivement la luminance du rayon incident */
+		double rec[3];
+		radiance(x, d, depth, PRNG_state, rec);
+		
+		/* pondère par la couleur de la sphère, prend en compte l'emissivité */
+		mul(f, rec, out);
+		axpy(1, obj->emission, out);
+		return;
+	}
+
+	/* dans les deux autres cas (réflection parfaite / refraction), on considère le rayon
+	   réfléchi par la spère */
+
+	double reflected_dir[3];
+	copy(ray_direction, reflected_dir);
+	axpy(-2 * dot(n, ray_direction), n, reflected_dir);
+
+	/* cas de la reflection SPEculaire parfaire (==mirroir) */
+	if (obj->refl == SPEC) { 
+		double rec[3];
+		/* calcule récursivement la luminance du rayon réflechi */
+		radiance(x, reflected_dir, depth, PRNG_state, rec);
+		/* pondère par la couleur de la sphère, prend en compte l'emissivité */
+		mul(f, rec, out);
+		axpy(1, obj->emission, out);
+		return;
+	}
+
+	/* cas des surfaces diélectriques (==verre). Combinaison de réflection et de réfraction. */
+	bool into = dot(n, nl) > 0;      /* vient-il de l'extérieur ? */
+	double nc = 1;                   /* indice de réfraction de l'air */
+	double nt = 1.5;                 /* indice de réfraction du verre */
+	double nnt = into ? (nc / nt) : (nt / nc);
+	double ddn = dot(ray_direction, nl);
+	
+	/* si le rayon essaye de sortir de l'objet en verre avec un angle incident trop faible,
+	   il rebondit entièrement */
+	double cos2t = 1 - nnt * nnt * (1 - ddn * ddn);
+	if (cos2t < 0) {
+		double rec[3];
+		/* calcule seulement le rayon réfléchi */
+		radiance(x, reflected_dir, depth, PRNG_state, rec);
+		mul(f, rec, out);
+		axpy(1, obj->emission, out);
+		return;
+	}
+	
+	/* calcule la direction du rayon réfracté */
+	double tdir[3];
+	zero(tdir);
+	axpy(nnt, ray_direction, tdir);
+	axpy(-(into ? 1 : -1) * (ddn * nnt + sqrt(cos2t)), n, tdir);
+
+	/* calcul de la réflectance (==fraction de la lumière réfléchie) */
+	double a = nt - nc;
+	double b = nt + nc;
+	double R0 = a * a / (b * b);
+	double c = 1 - (into ? -ddn : dot(tdir, n));
+	double Re = R0 + (1 - R0) * c * c * c * c * c;   /* réflectance */
+	double Tr = 1 - Re;                              /* transmittance */
+	
+	/* au-dela d'une certaine profondeur, on choisit aléatoirement si
+	   on calcule le rayon réfléchi ou bien le rayon réfracté. En dessous du
+	   seuil, on calcule les deux. */
+	double rec[3];
+	if (depth > SPLIT_DEPTH) {
+		double P = .25 + .5 * Re;             /* probabilité de réflection */
+		if (erand48(PRNG_state) < P) {
+			radiance(x, reflected_dir, depth, PRNG_state, rec);
+			double RP = Re / P;
+			scal(RP, rec);
+		} else {
+			radiance(x, tdir, depth, PRNG_state, rec);
+			double TP = Tr / (1 - P); 
+			scal(TP, rec);
+		}
+	} else {
+		double rec_re[3], rec_tr[3];
+		radiance(x, reflected_dir, depth, PRNG_state, rec_re);
+		radiance(x, tdir, depth, PRNG_state, rec_tr);
+		zero(rec);
+		axpy(Re, rec_re, rec);
+		axpy(Tr, rec_tr, rec);
+	}
+	/* pondère, prend en compte la luminance */
+	mul(f, rec, out);
+	axpy(1, obj->emission, out);
+	return;
+}
+
+/* ************************************************************************************************************************************************ */
+
 
 double wtime()
 {
@@ -681,8 +862,8 @@ int main(int argc, char **argv)
 
 	static const double CST = 0.5135;  /* ceci défini l'angle de vue */
 
-	//double camera_position[3] = {50, 52, 295.6};
-	//double camera_direction[3] = {0, -0.042612, -1};
+	double camera_position[3] = {50, 52, 295.6};
+	double camera_direction[3] = {0, -0.042612, -1};
 
 	avx avx_camera_position;
 	avx_set(avx_camera_position , 50, 52, 295.6);
@@ -690,25 +871,25 @@ int main(int argc, char **argv)
 	avx avx_camera_direction;
 	avx_set(avx_camera_direction, 0, -0.042612, -1);
 
-	//normalize(camera_direction);
+	normalize(camera_direction);
 	avx_normalize(avx_camera_direction);
 	
 	/* incréments pour passer d'un pixel à l'autre */
 	
-	//double cx[3] = {w * CST / h, 0, 0}; 
+	double cx[3] = {w * CST / h, 0, 0}; 
 	avx avx_cx;
 	avx_set(avx_cx , w * CST / h, 0, 0);   
 	
-	//double cy[3] al;
+	double cy[3] al;
 	avx avx_cy;
 
-	//cross(cx, camera_direction, cy);  /* cy est orthogonal à cx ET à la direction dans laquelle regarde la caméra */
+	cross(cx, camera_direction, cy);  /* cy est orthogonal à cx ET à la direction dans laquelle regarde la caméra */
 	avx_cross(avx_cx , avx_camera_direction , avx_cy);
 
-	//normalize(cy);
+	normalize(cy);
 	avx_normalize(avx_cy);
 
-	//scal(CST, cy);
+	scal(CST, cy);
 	avx_scal(CST , avx_cy);
 
 	
@@ -759,6 +940,41 @@ int main(int argc, char **argv)
 		printf("nb bloc : %d\n",nb_bloc);
 		printf("Nb process : %d\n",nbProcess);
 		printf("Nb thread : %d\n",NBTHREAD);
+		
+		/*
+		printf("\n");
+		printf("position camera : ");
+		for(int i=0 ; i<3 ; i++) printf("%.2f ",camera_position[i]);
+		printf("\n");
+		printf("avx position camera : ");
+		for(int i=0 ; i<4 ; i++) printf("%.2f ",((double*)&avx_camera_position)[i]);
+		printf("\n");
+
+		printf("\n");
+		printf("direction camera : ");
+		for(int i=0 ; i<3 ; i++) printf("%.2f ",camera_direction[i]);
+		printf("\n");
+		printf("avx direction camera : ");
+		for(int i=0 ; i<4 ; i++) printf("%.2f ",((double*)&avx_camera_direction)[i]);
+		printf("\n");
+
+		printf("\n");
+		printf("cx : ");
+		for(int i=0 ; i<3 ; i++) printf("%.2f ",cx[i]);
+		printf("\n");
+		printf("avx cx : ");
+		for(int i=0 ; i<4 ; i++) printf("%.2f ",((double*)&avx_cx)[i]);
+		printf("\n");
+
+		printf("\n");
+		printf("cy : ");
+		for(int i=0 ; i<3 ; i++) printf("%.2f ",cy[i]);
+		printf("\n");
+		printf("avx cy : ");
+		for(int i=0 ; i<4 ; i++) printf("%.2f ",((double*)&avx_cy)[i]);
+		printf("\n");
+		*/
+
 	}
 
 	// tampon mémoire pour l'image
@@ -984,17 +1200,17 @@ int main(int argc, char **argv)
 				/* calcule la luminance d'un pixel, avec sur-échantillonnage 2x2 */
 
 				double pixel_radiance[3] al;
+				zero(pixel_radiance);
 				
 				avx avx_pixel_radiance;
 				avx_zero(avx_pixel_radiance);
-
 
 				// Deux boucles imbriquées pour les sous pixels
 				for (int sub_i = 0; sub_i < 2; sub_i++) {
 						for (int sub_j = 0; sub_j < 2; sub_j++) {
 							
-							//double subpixel_radiance[3] al;
-							//zero(subpixel_radiance);
+							double subpixel_radiance[3] al;
+							zero(subpixel_radiance);
 							avx avx_subpixel_radiance;
 							avx_zero(avx_subpixel_radiance);
 
@@ -1006,58 +1222,76 @@ int main(int argc, char **argv)
 								double r2 = 2 * erand48(PRNG_state);
 								double dy = (r2 < 1) ? sqrt(r2) - 1 : 1 - sqrt(2 - r2);
 								
-								//double ray_direction[3] al;
+								double ray_direction[3] al;
 								avx avx_ray_direction;
 
-								//copy(camera_direction, ray_direction);
+								copy(camera_direction, ray_direction);
 								avx_copy(avx_camera_direction , avx_ray_direction);
 
-								//axpy(((sub_i + .5 + dy) / 2 + x) / h - .5, cy, ray_direction);
-								//axpy(((sub_j + .5 + dx) / 2 + y) / w - .5, cx, ray_direction);
-
+								axpy(((sub_i + .5 + dy) / 2 + x) / h - .5, cy, ray_direction);
+								axpy(((sub_j + .5 + dx) / 2 + y) / w - .5, cx, ray_direction);
 								avx_axpy(((sub_i + .5 + dy) / 2 + x) / h - .5, avx_cy, avx_ray_direction);
 								avx_axpy(((sub_j + .5 + dx) / 2 + y) / w - .5, avx_cx, avx_ray_direction);
 
-								//normalize(ray_direction);
+								normalize(ray_direction);
 								avx_normalize(avx_ray_direction);
 								
-								//double ray_origin[3] al;
+								double ray_origin[3] al;
 								avx avx_ray_origin;
 
-								//zero(ray_origin);
+								zero(ray_origin);
 								avx_zero(avx_ray_origin);
 
-								//copy(camera_position, ray_origin);
+								copy(camera_position, ray_origin);
 								avx_copy(avx_camera_position , avx_ray_origin);
 
-								//axpy(140, ray_direction, ray_origin);
+								axpy(140, ray_direction, ray_origin);
 								avx_axpy(140, avx_ray_direction , avx_ray_origin);
 								
 								/* estime la lumiance qui arrive sur la caméra par ce rayon */
-								//double sample_radiance[3] al;
+								double sample_radiance[3] al;
 								avx avx_sample_radiance;
+
+								/*
+								printf("\nray origin : %.2f %.2f %.2f\navx ray origin : %.2f %.2f %.2f %.2f\n" \
+							,ray_origin[0], ray_origin[1],ray_origin[2], \
+							((double*)&avx_ray_origin)[0] , ((double*)&avx_ray_origin)[1], ((double*)&avx_ray_origin)[2], ((double*)&avx_ray_origin)[3]);
+								*/
 								
-								//radiance(ray_origin, ray_direction, 0, PRNG_state, sample_radiance);
-								radiance(avx_ray_origin, avx_ray_direction, 0, PRNG_state, &avx_sample_radiance);
+								radiance(ray_origin, ray_direction, 0, PRNG_state, sample_radiance);
+								avx_radiance(avx_ray_origin, avx_ray_direction, 0, PRNG_state, &avx_sample_radiance);
+
 								
+																
 								/* fait la moyenne sur tous les rayons */
-								//axpy(1. / samples, sample_radiance, subpixel_radiance);
+								axpy(1. / samples, sample_radiance, subpixel_radiance);
 								avx_axpy(1. / samples , avx_sample_radiance , avx_subpixel_radiance);
 							}
 							
+							clamp(subpixel_radiance);
 							avx_clamp(avx_subpixel_radiance);
 							
 							/* fait la moyenne sur les 4 sous-pixels */
-							//axpy(0.25, subpixel_radiance + 3*c, pixel_radiance);
+							axpy(0.25, subpixel_radiance, pixel_radiance);
 							avx_axpy(0.25, avx_subpixel_radiance , avx_pixel_radiance);
 							
 						}
 					}
+					/*
+					printf("\n");
+					printf("pixel radiance : ");
+					for(int i=0 ; i<3 ; i++) printf("%.2f ",pixel_radiance[i]);
+					printf("\n");
+					printf("avx pixel radiance: ");
+					for(int i=0 ; i<4 ; i++) printf("%.2f ",((double*)&avx_pixel_radiance)[i]);
+					printf("\n");
+					*/
 
-					avx_copy3(avx_pixel_radiance , pixel_radiance);
+					//avx_copy3(avx_pixel_radiance , pixel_radiance);
 
 					// ligne originale 
 					// copy(pixel_radiance, image + 3 * ((h - 1 - i) * w + j)); // <-- retournement vertical
+
 
 					// On gère le retournement vertical au moment de la sauvegarde de l'image car notre division 
 					// en blocs ne tombre pas forcement sur la fin d'une ligne
