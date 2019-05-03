@@ -242,7 +242,13 @@ double avx_sphere_intersect(const struct Sphere *s, avx avx_ray_origin, avx avx_
 	avx avx_op;
 	
 	// Solve t^2*d.d + 2*t*(o-p).d + (o-p).(o-p)-R^2 = 0 
-	avx avx_pos = avx_load(s->position);
+	avx avx_pos;
+	avx_set(avx_pos,s->position[0],s->position[1],s->position[2]);
+/*
+	printf("s->position : %.2f %.2f %.2f\navx_pos : %.2f %.2f %.2f %.2f\n", \
+				s->position[0],s->position[1],s->position[2], \
+				((double*)&avx_pos)[0], ((double*)&avx_pos)[1], ((double*)&avx_pos)[2]);
+*/
 
 	//copy(s->position, op);
 	avx_copy(avx_pos , avx_op);
@@ -324,8 +330,8 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 	avx_copy3(avx_ray_origin , ray_origin);
 	avx_copy3(avx_ray_direction , ray_direction);
 
-	//if (!avx_intersect(avx_ray_origin, avx_ray_direction, &t, &id)) {
-		if(!intersect(ray_origin,ray_direction,&t,&id)) {
+	if (!avx_intersect(avx_ray_origin, avx_ray_direction, &t, &id)) {
+		//if(!intersect(ray_origin,ray_direction,&t,&id)) {
 		//zero(out);    		// if miss, return black
 		avx_zero(*avx_out); 
 		return; 
@@ -351,7 +357,8 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 	avx_copy(avx_x , avx_n);
 
 	//axpy(-1, obj->position, n);
-	avx avx_pos = avx_load(obj->position);
+	avx avx_pos; 
+	avx_set(avx_pos,obj->position[0],obj->position[1],obj->position[2]);
 	avx_axpy(-1 , avx_pos , avx_n);
 
 	//normalize(n);
@@ -377,7 +384,9 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 	avx avx_f;
 
 	//copy(obj->color, f);
-	avx avx_color = avx_load(obj->color);
+	avx avx_color; 
+	avx_set(avx_color,obj->color[0],obj->color[1],obj->color[2]);
+
 	avx_copy(avx_color , avx_f);
 
 	double p = obj->max_reflexivity;
@@ -392,7 +401,8 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 			avx_scal(1/p , avx_f);
 		} else {
 			//copy(obj->emission, out);
-			avx avx_emission = avx_load(obj->emission);
+			avx avx_emission;
+			avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);
 			avx_copy(avx_emission , *avx_out);
 			return;
 		}
@@ -473,7 +483,9 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 		avx_mul(avx_f , avx_rec , *avx_out);
 
 		//axpy(1, obj->emission, out);
-		avx avx_emission = avx_load(obj->emission);
+		avx avx_emission;
+		avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);
+
 		avx_axpy(1 , avx_emission , *avx_out);
 
 		return;
@@ -505,7 +517,8 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 		avx_mul(avx_f , avx_rec , *avx_out);
 
 		//axpy(1, obj->emission, out);
-		avx avx_emission = avx_load(obj->emission);
+		avx avx_emission;
+		avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);
 		avx_axpy(1 , avx_emission , *avx_out);
 
 		return;
@@ -537,7 +550,8 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 		avx_mul(avx_f , avx_rec , *avx_out);
 
 		//axpy(1, obj->emission, out);
-		avx avx_emission = avx_load(obj->emission);
+		avx avx_emission;
+		avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);		
 		avx_axpy(1 , avx_emission , *avx_out);
 
 		return;
@@ -617,7 +631,8 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 	avx_mul(avx_f , avx_rec , *avx_out);
 
 	//axpy(1, obj->emission, out);
-	avx avx_emission = avx_load(obj->emission);
+	avx avx_emission;
+	avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);
 	avx_axpy(1 , avx_emission , *avx_out);
 
 	return;
@@ -862,8 +877,8 @@ int main(int argc, char **argv)
 
 	static const double CST = 0.5135;  /* ceci défini l'angle de vue */
 
-	double camera_position[3] = {50, 52, 295.6};
-	double camera_direction[3] = {0, -0.042612, -1};
+	//double camera_position[3] = {50, 52, 295.6};
+	//double camera_direction[3] = {0, -0.042612, -1};
 
 	avx avx_camera_position;
 	avx_set(avx_camera_position , 50, 52, 295.6);
@@ -871,25 +886,25 @@ int main(int argc, char **argv)
 	avx avx_camera_direction;
 	avx_set(avx_camera_direction, 0, -0.042612, -1);
 
-	normalize(camera_direction);
+	//normalize(camera_direction);
 	avx_normalize(avx_camera_direction);
 	
 	/* incréments pour passer d'un pixel à l'autre */
 	
-	double cx[3] = {w * CST / h, 0, 0}; 
+	//double cx[3] = {w * CST / h, 0, 0}; 
 	avx avx_cx;
 	avx_set(avx_cx , w * CST / h, 0, 0);   
 	
-	double cy[3] al;
+	//double cy[3] al;
 	avx avx_cy;
 
-	cross(cx, camera_direction, cy);  /* cy est orthogonal à cx ET à la direction dans laquelle regarde la caméra */
+	//cross(cx, camera_direction, cy);  /* cy est orthogonal à cx ET à la direction dans laquelle regarde la caméra */
 	avx_cross(avx_cx , avx_camera_direction , avx_cy);
 
-	normalize(cy);
+	//normalize(cy);
 	avx_normalize(avx_cy);
 
-	scal(CST, cy);
+	//scal(CST, cy);
 	avx_scal(CST , avx_cy);
 
 	
@@ -1209,8 +1224,8 @@ int main(int argc, char **argv)
 				for (int sub_i = 0; sub_i < 2; sub_i++) {
 						for (int sub_j = 0; sub_j < 2; sub_j++) {
 							
-							double subpixel_radiance[3] al;
-							zero(subpixel_radiance);
+							//double subpixel_radiance[3] al;
+							//zero(subpixel_radiance);
 							avx avx_subpixel_radiance;
 							avx_zero(avx_subpixel_radiance);
 
@@ -1222,34 +1237,34 @@ int main(int argc, char **argv)
 								double r2 = 2 * erand48(PRNG_state);
 								double dy = (r2 < 1) ? sqrt(r2) - 1 : 1 - sqrt(2 - r2);
 								
-								double ray_direction[3] al;
+								//double ray_direction[3] al;
 								avx avx_ray_direction;
 
-								copy(camera_direction, ray_direction);
+								//copy(camera_direction, ray_direction);
 								avx_copy(avx_camera_direction , avx_ray_direction);
 
-								axpy(((sub_i + .5 + dy) / 2 + x) / h - .5, cy, ray_direction);
-								axpy(((sub_j + .5 + dx) / 2 + y) / w - .5, cx, ray_direction);
+								//axpy(((sub_i + .5 + dy) / 2 + x) / h - .5, cy, ray_direction);
+								//axpy(((sub_j + .5 + dx) / 2 + y) / w - .5, cx, ray_direction);
 								avx_axpy(((sub_i + .5 + dy) / 2 + x) / h - .5, avx_cy, avx_ray_direction);
 								avx_axpy(((sub_j + .5 + dx) / 2 + y) / w - .5, avx_cx, avx_ray_direction);
 
-								normalize(ray_direction);
+								//normalize(ray_direction);
 								avx_normalize(avx_ray_direction);
 								
-								double ray_origin[3] al;
+								//double ray_origin[3] al;
 								avx avx_ray_origin;
 
-								zero(ray_origin);
+								//zero(ray_origin);
 								avx_zero(avx_ray_origin);
 
-								copy(camera_position, ray_origin);
+								//copy(camera_position, ray_origin);
 								avx_copy(avx_camera_position , avx_ray_origin);
 
-								axpy(140, ray_direction, ray_origin);
+								//axpy(140, ray_direction, ray_origin);
 								avx_axpy(140, avx_ray_direction , avx_ray_origin);
 								
 								/* estime la lumiance qui arrive sur la caméra par ce rayon */
-								double sample_radiance[3] al;
+								//double sample_radiance[3] al;
 								avx avx_sample_radiance;
 
 								/*
@@ -1258,21 +1273,21 @@ int main(int argc, char **argv)
 							((double*)&avx_ray_origin)[0] , ((double*)&avx_ray_origin)[1], ((double*)&avx_ray_origin)[2], ((double*)&avx_ray_origin)[3]);
 								*/
 								
-								radiance(ray_origin, ray_direction, 0, PRNG_state, sample_radiance);
+								//radiance(ray_origin, ray_direction, 0, PRNG_state, sample_radiance);
 								avx_radiance(avx_ray_origin, avx_ray_direction, 0, PRNG_state, &avx_sample_radiance);
 
 								
 																
 								/* fait la moyenne sur tous les rayons */
-								axpy(1. / samples, sample_radiance, subpixel_radiance);
+								//axpy(1. / samples, sample_radiance, subpixel_radiance);
 								avx_axpy(1. / samples , avx_sample_radiance , avx_subpixel_radiance);
 							}
 							
-							clamp(subpixel_radiance);
+							//clamp(subpixel_radiance);
 							avx_clamp(avx_subpixel_radiance);
 							
 							/* fait la moyenne sur les 4 sous-pixels */
-							axpy(0.25, subpixel_radiance, pixel_radiance);
+							//axpy(0.25, subpixel_radiance, pixel_radiance);
 							avx_axpy(0.25, avx_subpixel_radiance , avx_pixel_radiance);
 							
 						}
@@ -1287,7 +1302,7 @@ int main(int argc, char **argv)
 					printf("\n");
 					*/
 
-					//avx_copy3(avx_pixel_radiance , pixel_radiance);
+					avx_copy3(avx_pixel_radiance , pixel_radiance);
 
 					// ligne originale 
 					// copy(pixel_radiance, image + 3 * ((h - 1 - i) * w + j)); // <-- retournement vertical
