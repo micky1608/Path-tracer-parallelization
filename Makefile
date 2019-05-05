@@ -2,20 +2,20 @@ CC=mpicc -Wall -O3
 
 CFLAGS=-Iinc
 
-LDFLAGS=-lm -fopenmp
+LDFLAGS=-lm -fopenmp -mavx2 -march=native
 
 BIN=pathtracer
 
-NB_PROC=2
+NB_PROC=4
 
-SAMPLE=500
+SAMPLE=120
 
-WIDTH=1920
-HEIGHT=1080
+WIDTH=320
+HEIGHT=200
 
 HOST=hostfile401
 
-RUNFLAG=-hostfile ${HOST}
+RUNFLAG=#-hostfile ${HOST}
 
 all : $(BIN)
 
@@ -24,6 +24,9 @@ all : $(BIN)
 
 clean :
 	rm -f $(BIN) *.o *~
+
+check:
+	valgrind --leak-check=yes ./$(BIN)
 
 exec :
 	mpirun -n $(NB_PROC) $(RUNFLAG)  ./$(BIN) $(SAMPLE) $(WIDTH) $(HEIGHT)
