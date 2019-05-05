@@ -237,32 +237,48 @@ double sphere_intersect(const struct Sphere *s, const double *ray_origin, const 
 // returns distance, 0 if nohit 
 double avx_sphere_intersect(const struct Sphere *s, avx avx_ray_origin, avx avx_ray_direction)
 { 
+
+	double ray_origin[3] al;
+	double ray_direction[3] al;
+
+	avx_copy3(avx_ray_origin , ray_origin);
+	avx_copy3(avx_ray_direction , ray_direction);
 	
-	//double op[3] al;
+	double op[3] al;
 	avx avx_op;
 	
 	// Solve t^2*d.d + 2*t*(o-p).d + (o-p).(o-p)-R^2 = 0 
 	avx avx_pos;
 	avx_set(avx_pos,s->position[0],s->position[1],s->position[2]);
+
 /*
 	printf("s->position : %.2f %.2f %.2f\navx_pos : %.2f %.2f %.2f %.2f\n", \
 				s->position[0],s->position[1],s->position[2], \
-				((double*)&avx_pos)[0], ((double*)&avx_pos)[1], ((double*)&avx_pos)[2]);
+				((double*)&avx_pos)[0], ((double*)&avx_pos)[1], ((double*)&avx_pos)[2], ((double*)&avx_pos)[3]);
 */
 
-	//copy(s->position, op);
+	copy(s->position, op);
 	avx_copy(avx_pos , avx_op);
 
-	//axpy(-1, ray_origin, op);
+	axpy(-1, ray_origin, op);
 	avx_axpy(-1 , avx_ray_origin , avx_op);
 
+/*
+	printf("op : %.2f %.2f %.2f\navx_op: %.2f %.2f %.2f %.2f\n", \
+			op[0],op[1],op[2], \
+			((double*)&avx_op)[0], ((double*)&avx_op)[1], ((double*)&avx_op)[2], ((double*)&avx_op)[3]);
+*/
 	double eps = 1e-4;
 	
-	//double b = dot(op, ray_direction);
+	//double boriginal = dot(op, ray_direction);
 	double b = avx_dot(avx_op, avx_ray_direction);
 
-	//double discriminant = b * b - dot(op, op) + s->radius * s->radius; 
+	//printf("b original : %.2f\tb avx : %.2f\n",boriginal , b);
+
+	//double discriminantoriginal = b * b - dot(op, op) + s->radius * s->radius; 
 	double discriminant = b * b - avx_dot(avx_op, avx_op) + s->radius * s->radius; 
+
+	//printf("discriminant original : %.2f\tdiscriminant avx : %.2f\n",discriminantoriginal , discriminant);
 
 	if (discriminant < 0)
 		return 0;   /* pas d'intersection */
@@ -302,11 +318,21 @@ bool intersect(const double *ray_origin, const double *ray_direction, double *t,
 
 bool avx_intersect(avx avx_ray_origin, avx avx_ray_direction, double *t, int *id)
 { 
+	double ray_origin[3] al;
+	double ray_direction[3] al;
+
+	avx_copy3(avx_ray_origin , ray_origin);
+	avx_copy3(avx_ray_direction , ray_direction);
+
 	int n = sizeof(spheres) / sizeof(struct Sphere);
 	double inf = 1e20; 
 	*t = inf;
 	for (int i = 0; i < n; i++) {
+		//double doriginal = sphere_intersect(&spheres[i], ray_origin, ray_direction);
 		double d = avx_sphere_intersect(&spheres[i], avx_ray_origin, avx_ray_direction);
+
+		//printf("d original : %.2f\td avx : %.2f\n",doriginal , d);
+
 		if ((d > 0) && (d < *t)) {
 			*t = d;
 			*id = i;
@@ -324,14 +350,17 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 	int id = 0;                             // id de la sphère intersectée par le rayon
 	double t;                               // distance à l'intersection
 
+/*
 	double ray_origin[3] al;
 	double ray_direction[3] al;
+	double out[3] al;
 
 	avx_copy3(avx_ray_origin , ray_origin);
 	avx_copy3(avx_ray_direction , ray_direction);
 
+*/
 	if (!avx_intersect(avx_ray_origin, avx_ray_direction, &t, &id)) {
-		//if(!intersect(ray_origin,ray_direction,&t,&id)) {
+	//	if(!intersect(ray_origin,ray_direction,&t,&id)) {
 		//zero(out);    		// if miss, return black
 		avx_zero(*avx_out); 
 		return; 
@@ -386,7 +415,6 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 	//copy(obj->color, f);
 	avx avx_color; 
 	avx_set(avx_color,obj->color[0],obj->color[1],obj->color[2]);
-
 	avx_copy(avx_color , avx_f);
 
 	double p = obj->max_reflexivity;
@@ -404,9 +432,16 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 			avx avx_emission;
 			avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);
 			avx_copy(avx_emission , *avx_out);
+
+/*
+			printf("out : %.2f %.2f %.2f\navx_out : %.2f %.2f %.2f %.2f\n", \
+			out[0],out[1],out[2], \
+			((double*)avx_out)[0], ((double*)avx_out)[1], ((double*)avx_out)[2], ((double*)avx_out)[3]);
+*/
 			return;
 		}
 	}
+
 
 	/* Cas de la réflection DIFFuse (= non-brillante). 
 	   On récupère la luminance en provenance de l'ensemble de l'univers. 
@@ -440,6 +475,13 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 			//uw[0] = 1;
 			avx_extract(avx_uw , 0) = 1;
 		}
+
+	/*
+		printf("uw : %.2f %.2f %.2f\navx_out : %.2f %.2f %.2f %.2f\n", \
+			uw[0],uw[1],uw[2], \
+			((double*)&avx_uw)[0], ((double*)&avx_uw)[1], ((double*)&avx_uw)[2], ((double*)&avx_uw)[3]);
+
+		*/
 			
 		//cross(uw, w, u);
 		avx_cross(avx_uw , avx_w , avx_u);
@@ -470,12 +512,18 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 		
 		//normalize(d);
 		avx_normalize(avx_d);
+
+		/*
+		printf("d : %.2f %.2f %.2f\navx_d : %.2f %.2f %.2f %.2f\n", \
+		d[0],d[1],d[2], \
+		((double*)&avx_d)[0], ((double*)&avx_d)[1], ((double*)&avx_d)[2], ((double*)&avx_d)[3]);
+		*/
 		
 		/* calcule récursivement la luminance du rayon incident */
 		//double rec[3];
 		avx avx_rec;
 		
-		//radiance(x, d, depth, PRNG_state, rec);
+		//radiance(x, d, depth, PRNG_state_original, rec);
 		avx_radiance(avx_x, avx_d, depth, PRNG_state, &avx_rec);
 
 		/* pondère par la couleur de la sphère, prend en compte l'emissivité */
@@ -485,9 +533,13 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 		//axpy(1, obj->emission, out);
 		avx avx_emission;
 		avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);
-
 		avx_axpy(1 , avx_emission , *avx_out);
 
+/*
+		printf("out : %.2f %.2f %.2f\tavx_out : %.2f %.2f %.2f %.2f\n", \
+			out[0],out[1],out[2], \
+			((double*)avx_out)[0], ((double*)avx_out)[1], ((double*)avx_out)[2], ((double*)avx_out)[3]);
+*/
 		return;
 	}
 
@@ -1210,7 +1262,7 @@ int main(int argc, char **argv)
 				y = (k + (current_task_start * SIZE_BLOCK)) % w;
 
 				//unsigned short PRNG_state[3] = {0, 0, i*i*i};
-				unsigned short PRNG_state[12] = {0, 0, x*x*x};
+				unsigned short PRNG_state[3] = {0, 0, x*x*x};
 
 				/* calcule la luminance d'un pixel, avec sur-échantillonnage 2x2 */
 
@@ -1275,9 +1327,7 @@ int main(int argc, char **argv)
 								
 								//radiance(ray_origin, ray_direction, 0, PRNG_state, sample_radiance);
 								avx_radiance(avx_ray_origin, avx_ray_direction, 0, PRNG_state, &avx_sample_radiance);
-
-								
-																
+	
 								/* fait la moyenne sur tous les rayons */
 								//axpy(1. / samples, sample_radiance, subpixel_radiance);
 								avx_axpy(1. / samples , avx_sample_radiance , avx_subpixel_radiance);
