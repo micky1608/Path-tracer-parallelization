@@ -113,7 +113,7 @@ typedef __m256d avx;
 // dot(a, b)
 static inline double avx_dot(const avx a, const avx b)
 {
-	static avx temp;
+	avx temp;
 	avx_mul(a,b,temp);
 	return avx_extract(temp, 0) + avx_extract(temp, 1) + avx_extract(temp, 2);
 }
