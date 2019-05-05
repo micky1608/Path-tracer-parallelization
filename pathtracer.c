@@ -237,15 +237,18 @@ double sphere_intersect(const struct Sphere *s, const double *ray_origin, const 
 // returns distance, 0 if nohit 
 double avx_sphere_intersect(const struct Sphere *s, avx avx_ray_origin, avx avx_ray_direction)
 { 
-
+/*
 	double ray_origin[3] al;
 	double ray_direction[3] al;
 
 	avx_copy3(avx_ray_origin , ray_origin);
 	avx_copy3(avx_ray_direction , ray_direction);
+*/	
 	
-	double op[3] al;
+	//double op[3] al;
 	avx avx_op;
+
+
 	
 	// Solve t^2*d.d + 2*t*(o-p).d + (o-p).(o-p)-R^2 = 0 
 	avx avx_pos;
@@ -257,10 +260,10 @@ double avx_sphere_intersect(const struct Sphere *s, avx avx_ray_origin, avx avx_
 				((double*)&avx_pos)[0], ((double*)&avx_pos)[1], ((double*)&avx_pos)[2], ((double*)&avx_pos)[3]);
 */
 
-	copy(s->position, op);
+	//copy(s->position, op);
 	avx_copy(avx_pos , avx_op);
 
-	axpy(-1, ray_origin, op);
+	//axpy(-1, ray_origin, op);
 	avx_axpy(-1 , avx_ray_origin , avx_op);
 
 /*
@@ -318,12 +321,13 @@ bool intersect(const double *ray_origin, const double *ray_direction, double *t,
 
 bool avx_intersect(avx avx_ray_origin, avx avx_ray_direction, double *t, int *id)
 { 
+	/*
 	double ray_origin[3] al;
 	double ray_direction[3] al;
 
 	avx_copy3(avx_ray_origin , ray_origin);
 	avx_copy3(avx_ray_direction , ray_direction);
-
+*/
 	int n = sizeof(spheres) / sizeof(struct Sphere);
 	double inf = 1e20; 
 	*t = inf;
@@ -1061,7 +1065,8 @@ int main(int argc, char **argv)
 
 	if(rank == 0) {
 		// allocation de l'image totale
-		image = malloc(nb_bloc * SIZE_BLOCK * SIZE_PIXEL);
+		//image = malloc(nb_bloc * SIZE_BLOCK * SIZE_PIXEL);
+		if(posix_memalign((void**)&image , 32 , nb_bloc * SIZE_BLOCK * SIZE_PIXEL)) { perror("rank 0 : Impossible d'allouer l'image "); exit(1); }
 
 		// pas de blocs supplementaires
 		imageSupSize=0;
@@ -1070,16 +1075,18 @@ int main(int argc, char **argv)
 	else {
 
 		// allocation d'un tampon principal
-		image = malloc(nb_bloc_local * SIZE_BLOCK * SIZE_PIXEL);
+		//image = malloc(nb_bloc_local * SIZE_BLOCK * SIZE_PIXEL);
+		if(posix_memalign((void**)&image , 32 , nb_bloc_local * SIZE_BLOCK * SIZE_PIXEL)) { perror("Impossible d'allouer l'image"); exit(1); }
 
 		// allocation d'un tampon supplémentaire 
 		imageSupSize = nb_bloc_local;
-		image_sup = malloc(imageSupSize * SIZE_BLOCK * SIZE_PIXEL);
+		//image_sup = malloc(imageSupSize * SIZE_BLOCK * SIZE_PIXEL);
+		if(posix_memalign((void**)&image_sup , 32 , imageSupSize * SIZE_BLOCK * SIZE_PIXEL)) { perror("Impossible d'allouer l'image"); exit(1); }
 
-		if (image_sup == NULL) { perror("Impossible d'allouer le tampon supplémentaire"); exit(1); }
+		//if (image_sup == NULL) { perror("Impossible d'allouer le tampon supplémentaire"); exit(1); }
 	}
 
-	if (image == NULL) { perror("Impossible d'allouer l'image"); exit(1); }
+	//if (image == NULL) { perror("Impossible d'allouer l'image"); exit(1); }
 
 	nb_bloc_locaux = (int*)malloc(nbProcess*sizeof(int));
 
@@ -1266,8 +1273,8 @@ int main(int argc, char **argv)
 
 				/* calcule la luminance d'un pixel, avec sur-échantillonnage 2x2 */
 
-				double pixel_radiance[3] al;
-				zero(pixel_radiance);
+				//double pixel_radiance[3] al;
+				//zero(pixel_radiance);
 				
 				avx avx_pixel_radiance;
 				avx_zero(avx_pixel_radiance);
@@ -1352,7 +1359,7 @@ int main(int argc, char **argv)
 					printf("\n");
 					*/
 
-					avx_copy3(avx_pixel_radiance , pixel_radiance);
+					//avx_copy3(avx_pixel_radiance , pixel_radiance);
 
 					// ligne originale 
 					// copy(pixel_radiance, image + 3 * ((h - 1 - i) * w + j)); // <-- retournement vertical
@@ -1362,15 +1369,18 @@ int main(int argc, char **argv)
 					// en blocs ne tombre pas forcement sur la fin d'une ligne
 					if(processing_local_blocs)
 					{
-						copy(pixel_radiance, image + 3*k);
+						//copy(pixel_radiance, image + 3*k);
+						avx_copy3(avx_pixel_radiance , image + 3*k);
 					}else
 					{
 						if(rank != 0)
 						{
-							copy(pixel_radiance, image_sup+(current_bloc_offset*SIZE_BLOCK + k)*3);
+							//copy(pixel_radiance, image_sup+(current_bloc_offset*SIZE_BLOCK + k)*3);
+							avx_copy3(avx_pixel_radiance , image_sup+(current_bloc_offset*SIZE_BLOCK + k)*3);
 						}else
 						{
-							copy(pixel_radiance, image+(current_task_start*SIZE_BLOCK+k)*3);
+							//copy(pixel_radiance, image+(current_task_start*SIZE_BLOCK+k)*3);
+							avx_copy3(avx_pixel_radiance, image+(current_task_start*SIZE_BLOCK+k)*3);
 						}
 					}
 			} // for k
