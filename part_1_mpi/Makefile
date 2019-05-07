@@ -8,9 +8,19 @@ BIN=pathtracer
 
 NB_PROC=4
 
-HOST=hostfile408
+SAMPLE=50
+WIDTH=320
+HEIGHT=200
 
-RUNFLAG=#-hostfile ${HOST}
+HOST=hostfile
+
+RUNFLAG=
+
+ifneq ("$(wildcard hostfile)","")
+	RUNFLAG=-hostfile ${HOST}
+	N=$(shell wc -l hostfile | grep -o -e [0-9]*)
+	NB_PROC=$(shell echo $$((2*$N)))
+endif
 
 all : $(BIN)
 
@@ -20,7 +30,10 @@ all : $(BIN)
 clean :
 	rm -f $(BIN) *.o *~
 
+check:
+	valgrind --leak-check=yes ./$(BIN)
+
 exec :
-	mpirun -n $(NB_PROC) $(RUNFLAG)  ./$(BIN)
+	mpirun -n $(NB_PROC) $(RUNFLAG) ./$(BIN) $(SAMPLE) $(WIDTH) $(HEIGHT)
 
 
