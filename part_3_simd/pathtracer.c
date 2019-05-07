@@ -38,53 +38,10 @@
 
 enum Refl_t {DIFF, SPEC, REFR};   /* types de matériaux (DIFFuse, SPECular, REFRactive) */
 
-/*
-struct Sphere { 
-	double radius; 
-	double position[3] __attribute__((aligned(32)));
-	double emission[3] __attribute__((aligned(32)));     // couleur émise (=source de lumière)
-	double color[3] __attribute__((aligned(32)));        // couleur de l'objet RGB (diffusion, refraction, ...) 
-	enum Refl_t refl;       // type de reflection
-	double max_reflexivity;
-};
-*/
-
-struct Sphere { 
-	double radius; 
-	avx position;
-	avx emission;     /* couleur émise (=source de lumière) */
-	avx color;        /* couleur de l'objet RGB (diffusion, refraction, ...) */
-	enum Refl_t refl;       /* type de reflection */
-	double max_reflexivity;
-};
-
-static const int KILL_DEPTH = 7;
-static const int SPLIT_DEPTH = 4;
-
-/* la scène est composée uniquement de spheres */
-struct Sphere spheres[] = { 
-// radius position,                         emission,     color,              material 
-   {1e5,  _mm256_setr_pd(1e5+1,  40.8,       81.6 , 0),   		_mm256_setr_pd(0,0,0,0),          _mm256_setr_pd(.75,  .25,  .25, 0),  DIFF, -1}, // Left 
-   {1e5,  _mm256_setr_pd(-1e5+99, 40.8,       81.6 , 0),      _mm256_setr_pd(0,0,0,0),          _mm256_setr_pd(.25,  .25,  .75, 0),  DIFF, -1}, // Right 
-   {1e5,  _mm256_setr_pd(50,      40.8,       1e5, 0),       _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.75,  .75,  .75, 0),  DIFF, -1}, // Back 
-   {1e5,  _mm256_setr_pd(50,      40.8,      -1e5 + 170, 0), _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(0,0,0,0),                 DIFF, -1}, // Front 
-   {1e5,  _mm256_setr_pd(50,      1e5,        81.6, 0),      _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(0.75, .75,  .75, 0),  DIFF, -1}, // Bottom 
-   {1e5,  _mm256_setr_pd(50,     -1e5 + 81.6, 81.6, 0),      _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(0.75, .75,  .75, 0),  DIFF, -1}, // Top 
-   {16.5, _mm256_setr_pd(40,      16.5,       47, 0),        _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.999, .999, .999, 0), SPEC, -1}, // Mirror 
-   {16.5, _mm256_setr_pd(73,      46.5,       88, 0),        _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.999, .999, .999, 0), REFR, -1}, // Glass 
-   {10,   _mm256_setr_pd(15,      45,         112, 0),       _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.999, .999, .999, 0), DIFF, -1}, // white ball
-   {15,   _mm256_setr_pd(16,      16,         130, 0),       _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.999, .999, 0, 0),    REFR, -1}, // big yellow glass
-   {7.5,  _mm256_setr_pd(40,      8,          120, 0),       _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.999, .999, 0   , 0), REFR, -1}, // small yellow glass middle
-   {8.5,  _mm256_setr_pd(60,      9,          110, 0),       _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.999, .999, 0   , 0), REFR, -1}, // small yellow glass right
-   {10,   _mm256_setr_pd(80,      12,         92, 0),        _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(0, .999, 0, 0),       DIFF, -1}, // green ball
-   {600,  _mm256_setr_pd(50,      681.33,     81.6, 0),      _mm256_setr_pd(12, 12, 12,0), 			_mm256_setr_pd(0,0,0,0),             DIFF, -1},  // Light 
-   {5,    _mm256_setr_pd(50,      75,         81.6, 0),      _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(0, .682, .999, 0), 	 DIFF, -1}, // occlusion, mirror
-}; 
+typedef __m256d avx;
 
 /************ Definition des fonctions simd ********************************/
 #define al __attribute__((aligned(32)))
-
-typedef __m256d avx;
 
 #define avx_load(x) _mm256_load_pd(x)
 
@@ -136,6 +93,61 @@ static inline double avx_dot(const avx a, const avx b)
 //Copie les 3 plus hauts doubles du registre avx2 à l'emplacement donne
 #define avx_copy3(x, mem) (_mm256_maskstore_pd(mem, _mm256_set_epi64x(0,(__int64_t)0xFFFFFFFFFFFFFFFF,(__int64_t)0xFFFFFFFFFFFFFFFF,(__int64_t)0xFFFFFFFFFFFFFFFF), x)) 
 
+/*
+struct Sphere { 
+	double radius; 
+	double position[3] __attribute__((aligned(32)));
+	double emission[3] __attribute__((aligned(32)));     // couleur émise (=source de lumière)
+	double color[3] __attribute__((aligned(32)));        // couleur de l'objet RGB (diffusion, refraction, ...) 
+	enum Refl_t refl;       // type de reflection
+	double max_reflexivity;
+};
+*/
+
+typedef struct Sphere { 
+	double radius; 
+	avx position;
+	avx emission;     /* couleur émise (=source de lumière) */
+	avx color;        /* couleur de l'objet RGB (diffusion, refraction, ...) */
+	enum Refl_t refl;       /* type de reflection */
+	double max_reflexivity;
+} Sphere;
+
+static const int KILL_DEPTH = 7;
+static const int SPLIT_DEPTH = 4;
+
+static void initSphere(Sphere* s, double radius, avx position, avx emission, avx color, enum Refl_t refl, double max_reflexivity)
+{
+	s->radius = radius;
+	s->position = position;
+	s->emission = emission;
+	s->color = color;
+	s->refl = refl;
+	s->max_reflexivity = max_reflexivity;
+}
+
+/* la scène est composée uniquement de spheres */
+Sphere spheres[15]; 
+static void initAllSpheres()
+{
+	// radius position,                         emission,     color,              material 
+	initSphere(&(spheres[0]),1e5,  _mm256_setr_pd(1e5+1,  40.8,       81.6 , 0),   		_mm256_setr_pd(0,0,0,0),          _mm256_setr_pd(.75,  .25,  .25, 0),  DIFF, -1); // Left 
+	initSphere(&(spheres[1]),1e5,  _mm256_setr_pd(-1e5+99, 40.8,       81.6 , 0),      _mm256_setr_pd(0,0,0,0),          _mm256_setr_pd(.25,  .25,  .75, 0),  DIFF, -1); // Right 
+	initSphere(&(spheres[2]),1e5,  _mm256_setr_pd(50,      40.8,       1e5, 0),       _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.75,  .75,  .75, 0),  DIFF, -1); // Back 
+	initSphere(&(spheres[3]),1e5,  _mm256_setr_pd(50,      40.8,      -1e5 + 170, 0), _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(0,0,0,0),                 DIFF, -1); // Front 
+	initSphere(&(spheres[4]),1e5,  _mm256_setr_pd(50,      1e5,        81.6, 0),      _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(0.75, .75,  .75, 0),  DIFF, -1); // Bottom 
+	initSphere(&(spheres[5]),1e5,  _mm256_setr_pd(50,     -1e5 + 81.6, 81.6, 0),      _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(0.75, .75,  .75, 0),  DIFF, -1); // Top 
+	initSphere(&(spheres[6]),16.5, _mm256_setr_pd(40,      16.5,       47, 0),        _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.999, .999, .999, 0), SPEC, -1); // Mirror 
+	initSphere(&(spheres[7]),16.5, _mm256_setr_pd(73,      46.5,       88, 0),        _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.999, .999, .999, 0), REFR, -1); // Glass 
+	initSphere(&(spheres[8]),10,   _mm256_setr_pd(15,      45,         112, 0),       _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.999, .999, .999, 0), DIFF, -1); // white ball
+	initSphere(&(spheres[9]),15,   _mm256_setr_pd(16,      16,         130, 0),       _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.999, .999, 0, 0),    REFR, -1); // big yellow glass
+	initSphere(&(spheres[10]),7.5,  _mm256_setr_pd(40,      8,          120, 0),       _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.999, .999, 0   , 0), REFR, -1); // small yellow glass middle
+	initSphere(&(spheres[11]),8.5,  _mm256_setr_pd(60,      9,          110, 0),       _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.999, .999, 0   , 0), REFR, -1); // small yellow glass right
+	initSphere(&(spheres[12]),10,   _mm256_setr_pd(80,      12,         92, 0),        _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(0, .999, 0, 0),       DIFF, -1); // green ball
+	initSphere(&(spheres[13]),600,  _mm256_setr_pd(50,      681.33,     81.6, 0),      _mm256_setr_pd(12, 12, 12,0), 			_mm256_setr_pd(0,0,0,0),             DIFF, -1);  // Light 
+	initSphere(&(spheres[14]),5,    _mm256_setr_pd(50,      75,         81.6, 0),      _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(0, .682, .999, 0), 	 DIFF, -1); // occlusion, mirror 
+
+}
 
 /********** micro BLAS LEVEL-1 + quelques fonctions non-standard **************/
 static inline void copy(const double *x, double *y)
@@ -216,10 +228,10 @@ double avx_sphere_intersect(const struct Sphere *s, avx avx_ray_origin, avx avx_
 	avx avx_op;
 
 	// Solve t^2*d.d + 2*t*(o-p).d + (o-p).(o-p)-R^2 = 0 
-	avx avx_pos;
-	avx_set(avx_pos,s->position[0],s->position[1],s->position[2]);
+	//avx avx_pos;
+	//avx_set(avx_pos,s->position[0],s->position[1],s->position[2]);
 
-	avx_copy(avx_pos , avx_op);
+	avx_copy(s->position , avx_op);
 
 	avx_axpy(-1 , avx_ray_origin , avx_op);
 
@@ -273,9 +285,8 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 	int id = 0;                             // id de la sphère intersectée par le rayon
 	double t;                               // distance à l'intersection
 
-	if (!avx_intersect(avx_ray_origin, avx_ray_direction, &t, &id)) {
-		//zero(out);    		// if miss, return black
-		avx_zero(*avx_out); 
+	if (!avx_intersect(avx_ray_origin, avx_ray_direction, &t, &id)) {   		
+		avx_zero(*avx_out); // if miss, return black
 		return; 
 	}
 	
@@ -293,9 +304,9 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 
 	avx_copy(avx_x , avx_n);
 
-	avx avx_pos; 
-	avx_set(avx_pos,obj->position[0],obj->position[1],obj->position[2]);
-	avx_axpy(-1 , avx_pos , avx_n);
+	//avx avx_pos; 
+	//avx_set(avx_pos,obj->position[0],obj->position[1],obj->position[2]);
+	avx_axpy(-1 , obj->position , avx_n);
 
 	avx_normalize(avx_n);
 	
@@ -310,9 +321,9 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 	/* couleur de la sphere */
 	avx avx_f;
 
-	avx avx_color; 
-	avx_set(avx_color,obj->color[0],obj->color[1],obj->color[2]);
-	avx_copy(avx_color , avx_f);
+	//avx avx_color; 
+	//avx_set(avx_color,obj->color[0],obj->color[1],obj->color[2]);
+	avx_copy(obj->color , avx_f);
 
 	double p = obj->max_reflexivity;
 
@@ -392,9 +403,9 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 		/* pondère par la couleur de la sphère, prend en compte l'emissivité */
 		avx_mul(avx_f , avx_rec , *avx_out);
 
-		avx avx_emission;
-		avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);
-		avx_axpy(1 , avx_emission , *avx_out);
+		//avx avx_emission;
+		//avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);
+		avx_axpy(1 , obj->emission , *avx_out);
 
 		return;
 	}
@@ -418,9 +429,9 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 		/* pondère par la couleur de la sphère, prend en compte l'emissivité */
 		avx_mul(avx_f , avx_rec , *avx_out);
 
-		avx avx_emission;
-		avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);
-		avx_axpy(1 , avx_emission , *avx_out);
+		//avx avx_emission;
+		//avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);
+		avx_axpy(1 , obj->emission , *avx_out);
 
 		return;
 	}
@@ -446,9 +457,9 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 
 		avx_mul(avx_f , avx_rec , *avx_out);
 
-		avx avx_emission;
-		avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);		
-		avx_axpy(1 , avx_emission , *avx_out);
+		//avx avx_emission;
+		//avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);		
+		avx_axpy(1 , obj->emission , *avx_out);
 
 		return;
 	}
@@ -510,9 +521,9 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 	/* pondère, prend en compte la luminance */
 	avx_mul(avx_f , avx_rec , *avx_out);
 
-	avx avx_emission;
-	avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);
-	avx_axpy(1 , avx_emission , *avx_out);
+	//avx avx_emission;
+	//avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);
+	avx_axpy(1 , obj->emission , *avx_out);
 
 	return;
 }
@@ -553,6 +564,7 @@ int main(int argc, char **argv)
 { 
 	// Mesurer le temps d'execution
 	double clock_begin, clock_end, work_begin, work_end;
+	initAllSpheres();
 	clock_begin = wtime();
 
 	// Petit cas test (small, quick and dirty):
@@ -610,7 +622,8 @@ int main(int argc, char **argv)
 	/* précalcule la norme infinie des couleurs */
 	int n = sizeof(spheres) / sizeof(struct Sphere);
 	for (int i = 0; i < n; i++) {
-		double *f = spheres[i].color;
+		double f[3] al;
+		avx_copy3(spheres[i].color, f);
 		if ((f[0] > f[1]) && (f[0] > f[2]))
 			spheres[i].max_reflexivity = f[0]; 
 		else {
