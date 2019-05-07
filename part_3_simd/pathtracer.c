@@ -38,11 +38,22 @@
 
 enum Refl_t {DIFF, SPEC, REFR};   /* types de matériaux (DIFFuse, SPECular, REFRactive) */
 
+/*
 struct Sphere { 
 	double radius; 
 	double position[3] __attribute__((aligned(32)));
-	double emission[3] __attribute__((aligned(32)));     /* couleur émise (=source de lumière) */
-	double color[3] __attribute__((aligned(32)));        /* couleur de l'objet RGB (diffusion, refraction, ...) */
+	double emission[3] __attribute__((aligned(32)));     // couleur émise (=source de lumière)
+	double color[3] __attribute__((aligned(32)));        // couleur de l'objet RGB (diffusion, refraction, ...) 
+	enum Refl_t refl;       // type de reflection
+	double max_reflexivity;
+};
+*/
+
+struct Sphere { 
+	double radius; 
+	avx position;
+	avx emission;     /* couleur émise (=source de lumière) */
+	avx color;        /* couleur de l'objet RGB (diffusion, refraction, ...) */
 	enum Refl_t refl;       /* type de reflection */
 	double max_reflexivity;
 };
@@ -53,21 +64,21 @@ static const int SPLIT_DEPTH = 4;
 /* la scène est composée uniquement de spheres */
 struct Sphere spheres[] = { 
 // radius position,                         emission,     color,              material 
-   {1e5,  { 1e5+1,  40.8,       81.6},      {},           {.75,  .25,  .25},  DIFF, -1}, // Left 
-   {1e5,  {-1e5+99, 40.8,       81.6},      {},           {.25,  .25,  .75},  DIFF, -1}, // Right 
-   {1e5,  {50,      40.8,       1e5},       {},           {.75,  .75,  .75},  DIFF, -1}, // Back 
-   {1e5,  {50,      40.8,      -1e5 + 170}, {},           {},                 DIFF, -1}, // Front 
-   {1e5,  {50,      1e5,        81.6},      {},           {0.75, .75,  .75},  DIFF, -1}, // Bottom 
-   {1e5,  {50,     -1e5 + 81.6, 81.6},      {},           {0.75, .75,  .75},  DIFF, -1}, // Top 
-   {16.5, {40,      16.5,       47},        {},           {.999, .999, .999}, SPEC, -1}, // Mirror 
-   {16.5, {73,      46.5,       88},        {},           {.999, .999, .999}, REFR, -1}, // Glass 
-   {10,   {15,      45,         112},       {},           {.999, .999, .999}, DIFF, -1}, // white ball
-   {15,   {16,      16,         130},       {},           {.999, .999, 0},    REFR, -1}, // big yellow glass
-   {7.5,  {40,      8,          120},        {},           {.999, .999, 0   }, REFR, -1}, // small yellow glass middle
-   {8.5,  {60,      9,          110},        {},           {.999, .999, 0   }, REFR, -1}, // small yellow glass right
-   {10,   {80,      12,         92},        {},           {0, .999, 0},       DIFF, -1}, // green ball
-   {600,  {50,      681.33,     81.6},      {12, 12, 12}, {},                 DIFF, -1},  // Light 
-   {5,    {50,      75,         81.6},      {},           {0, .682, .999}, DIFF, -1}, // occlusion, mirror
+   {1e5,  _mm256_setr_pd(1e5+1,  40.8,       81.6 , 0),   		_mm256_setr_pd(0,0,0,0),          _mm256_setr_pd(.75,  .25,  .25, 0),  DIFF, -1}, // Left 
+   {1e5,  _mm256_setr_pd(-1e5+99, 40.8,       81.6 , 0),      _mm256_setr_pd(0,0,0,0),          _mm256_setr_pd(.25,  .25,  .75, 0),  DIFF, -1}, // Right 
+   {1e5,  _mm256_setr_pd(50,      40.8,       1e5, 0),       _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.75,  .75,  .75, 0),  DIFF, -1}, // Back 
+   {1e5,  _mm256_setr_pd(50,      40.8,      -1e5 + 170, 0), _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(0,0,0,0),                 DIFF, -1}, // Front 
+   {1e5,  _mm256_setr_pd(50,      1e5,        81.6, 0),      _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(0.75, .75,  .75, 0),  DIFF, -1}, // Bottom 
+   {1e5,  _mm256_setr_pd(50,     -1e5 + 81.6, 81.6, 0),      _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(0.75, .75,  .75, 0),  DIFF, -1}, // Top 
+   {16.5, _mm256_setr_pd(40,      16.5,       47, 0),        _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.999, .999, .999, 0), SPEC, -1}, // Mirror 
+   {16.5, _mm256_setr_pd(73,      46.5,       88, 0),        _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.999, .999, .999, 0), REFR, -1}, // Glass 
+   {10,   _mm256_setr_pd(15,      45,         112, 0),       _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.999, .999, .999, 0), DIFF, -1}, // white ball
+   {15,   _mm256_setr_pd(16,      16,         130, 0),       _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.999, .999, 0, 0),    REFR, -1}, // big yellow glass
+   {7.5,  _mm256_setr_pd(40,      8,          120, 0),       _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.999, .999, 0   , 0), REFR, -1}, // small yellow glass middle
+   {8.5,  _mm256_setr_pd(60,      9,          110, 0),       _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(.999, .999, 0   , 0), REFR, -1}, // small yellow glass right
+   {10,   _mm256_setr_pd(80,      12,         92, 0),        _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(0, .999, 0, 0),       DIFF, -1}, // green ball
+   {600,  _mm256_setr_pd(50,      681.33,     81.6, 0),      _mm256_setr_pd(12, 12, 12,0), 			_mm256_setr_pd(0,0,0,0),             DIFF, -1},  // Light 
+   {5,    _mm256_setr_pd(50,      75,         81.6, 0),      _mm256_setr_pd(0,0,0,0),           _mm256_setr_pd(0, .682, .999, 0), 	 DIFF, -1}, // occlusion, mirror
 }; 
 
 /************ Definition des fonctions simd ********************************/
