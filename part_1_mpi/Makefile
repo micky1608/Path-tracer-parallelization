@@ -2,7 +2,7 @@ CC=mpicc -Wall -O3
 
 CFLAGS=-Iinc
 
-LDFLAGS=-lm
+LDFLAGS=-lm -fopenmp -mavx2 -march=native
 
 BIN=pathtracer
 
@@ -15,6 +15,8 @@ HEIGHT=200
 HOST=hostfile
 
 RUNFLAG=
+
+MAP=
 
 #si il existe un fichier hostfile
 ifneq ("$(wildcard hostfile)","")
@@ -35,6 +37,6 @@ check:
 	valgrind --leak-check=yes ./$(BIN)
 
 exec :
-	mpirun -n $(NB_PROC) $(RUNFLAG) ./$(BIN) $(SAMPLE) $(WIDTH) $(HEIGHT)
+	mpirun -n $(NB_PROC) $(RUNFLAG) $(MAP) ./$(BIN) $(SAMPLE) $(WIDTH) $(HEIGHT)
 
 

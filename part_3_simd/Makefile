@@ -16,10 +16,12 @@ HOST=hostfile
 
 RUNFLAG=
 
+MAP=
+
 #si il existe un fichier hostfile
-ifneq ("$(wildcard ${HOST})","")
+ifneq ("$(wildcard hostfile)","")
 	RUNFLAG=-hostfile ${HOST}
-	N=$(shell wc -l ${HOST} | grep -o -e [0-9]*)
+	N=$(shell wc -l hostfile | grep -o -e [0-9]*)
 	NB_PROC=$(shell echo $$((2*$N)))
 endif
 
@@ -35,6 +37,6 @@ check:
 	valgrind --leak-check=yes ./$(BIN)
 
 exec :
-	mpirun -n $(NB_PROC) $(RUNFLAG) ./$(BIN) $(SAMPLE) $(WIDTH) $(HEIGHT)
+	mpirun -n $(NB_PROC) $(RUNFLAG) $(MAP) ./$(BIN) $(SAMPLE) $(WIDTH) $(HEIGHT)
 
 

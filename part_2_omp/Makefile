@@ -16,6 +16,8 @@ HOST=hostfile
 
 RUNFLAG=
 
+MAP=
+
 #si il existe un fichier hostfile
 ifneq ("$(wildcard hostfile)","")
 	RUNFLAG=-hostfile ${HOST}
@@ -35,6 +37,6 @@ check:
 	valgrind --leak-check=yes ./$(BIN)
 
 exec :
-	mpirun -n $(NB_PROC) $(RUNFLAG) ./$(BIN) $(SAMPLE) $(WIDTH) $(HEIGHT)
+	mpirun -n $(NB_PROC) $(RUNFLAG) $(MAP) ./$(BIN) $(SAMPLE) $(WIDTH) $(HEIGHT)
 
 
