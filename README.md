@@ -15,4 +15,5 @@ WIDTH, HEIGHT : Dimensions de l'image <br/>
 
 HOST : Nom du fichier hostfile à utiliser<br/>
 
-Exemple pour calculer une image 1920*1080 avec 500 échantillons par pixel : make exec SAMPLE=500 WIDTH=1920 HEIGHT=1080
+Exemple pour calculer une image 1920*1080 avec 500 échantillons par pixel : <br/>
+make exec SAMPLE=500 WIDTH=1920 HEIGHT=1080
