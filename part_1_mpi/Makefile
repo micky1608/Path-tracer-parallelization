@@ -16,6 +16,7 @@ HOST=hostfile
 
 RUNFLAG=
 
+#si il existe un fichier hostfile
 ifneq ("$(wildcard hostfile)","")
 	RUNFLAG=-hostfile ${HOST}
 	N=$(shell wc -l hostfile | grep -o -e [0-9]*)
