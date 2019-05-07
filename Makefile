@@ -1,34 +1,11 @@
-CC=mpicc -Wall -O3
+all:
+	(cd part_0_sequentiel ; make)	
+	(cd part_1_mpi ; make)
+	(cd part_2_omp ; make)
+	(cd part_3_simd ; make)
 
-CFLAGS=-Iinc
-
-LDFLAGS=-lm -fopenmp -mavx2 -march=native
-
-BIN=pathtracer
-
-NB_PROC=4
-
-SAMPLE=120
-
-WIDTH=320
-HEIGHT=200
-
-HOST=hostfile401
-
-RUNFLAG=#-hostfile ${HOST}
-
-all : $(BIN)
-
-% : %.c
-	$(CC) -o $@ $^ $(LDFLAGS)
-
-clean :
-	rm -f $(BIN) *.o *~
-
-check:
-	valgrind --leak-check=yes ./$(BIN)
-
-exec :
-	mpirun -n $(NB_PROC) $(RUNFLAG)  ./$(BIN) $(SAMPLE) $(WIDTH) $(HEIGHT)
-
-
+clean: 
+	(cd part_0_sequentiel ; make clean)	
+	(cd part_1_mpi ; make clean)
+	(cd part_2_omp ; make clean)
+	(cd part_3_simd ; make clean)
