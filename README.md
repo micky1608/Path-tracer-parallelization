@@ -7,7 +7,11 @@ Pour lancer une execution :
  - Pour definir les parametres manuellement, il faut utiliser make exec suivi des variables à définir :<br/>
  make exec VAR=valeur avec VAR appartenant à {NB_PROC, SAMPLE, WIDTH, HEIGHT,HOST} 
 
-NB_PROC : Nombre de processus
-SAMPLE : Nombre de samples
-WIDTH, HEIGHT : Dimensions de l'image 
-HOST : Nom du fichier hostfile à utiliser 
+NB_PROC : Nombre de processus <<br/>
+
+SAMPLE : Nombre de samples<br/>
+
+WIDTH, HEIGHT : Dimensions de l'image <br/>
+
+HOST : Nom du fichier hostfile à utiliser<br/>
+
