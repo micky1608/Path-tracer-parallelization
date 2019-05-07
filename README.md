@@ -7,7 +7,7 @@ Pour lancer une execution :
  - Pour definir les parametres manuellement, il faut utiliser make exec suivi des variables à définir :<br/>
  make exec VAR=valeur avec VAR appartenant à {NB_PROC, SAMPLE, WIDTH, HEIGHT,HOST} 
 
-NB_PROC : Nombre de processus<<br/>
+NB_PROC : Nombre de processus<br/>
 
 SAMPLE : Nombre de samples<br/>
 
