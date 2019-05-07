@@ -1,4 +1,5 @@
 Pour compiler toutes les versions : make
+
 Pour lancer une execution : 
  - se placer dans un dossier part_*
  - make exec pour lancer une execution en local
