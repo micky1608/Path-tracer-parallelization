@@ -7,7 +7,7 @@
  * 	https://docs.google.com/open?id=0B8g97JkuSSBwUENiWTJXeGtTOHFmSm51UC01YWtCZw
  */
 
-#define _XOPEN_SOURCE
+#define _XOPEN_SOURCE 500
 #include <omp.h>
 #include <mpi.h>
 #include <math.h>   
