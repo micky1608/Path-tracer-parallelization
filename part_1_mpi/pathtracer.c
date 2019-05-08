@@ -466,7 +466,6 @@ int main(int argc, char **argv)
 		printf("Taille de blocs utilisée : %d pixels\n",SIZE_BLOCK);
 		printf("Nombre total de blocs : %d\n",nb_bloc);
 		printf("Nombre de processus : %d\n",nbProcess);
-		printf("Nombre de threads crée par processus : %d\n",NBTHREAD);
 	}
 
 	// tampon mémoire pour l'image
