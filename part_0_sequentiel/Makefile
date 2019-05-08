@@ -4,7 +4,7 @@ CFLAGS=-Iinc
 
 LDFLAGS=-lm 
 
-BIN=pathtracer_sequentiel
+BIN=pathtracer
 
 all : $(BIN)
 
