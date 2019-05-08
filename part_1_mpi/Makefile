@@ -2,15 +2,28 @@ CC=mpicc -Wall -O3
 
 CFLAGS=-Iinc
 
-LDFLAGS=-lm
+LDFLAGS=-lm -fopenmp -mavx2 -march=native
 
 BIN=pathtracer
 
 NB_PROC=4
 
-HOST=hostfile408
+SAMPLE=50
+WIDTH=320
+HEIGHT=200
 
-RUNFLAG=#-hostfile ${HOST}
+HOST=hostfile
+
+RUNFLAG=
+
+MAP=
+
+#si il existe un fichier hostfile
+ifneq ("$(wildcard hostfile)","")
+	RUNFLAG=-hostfile ${HOST}
+	N=$(shell wc -l hostfile | grep -o -e [0-9]*)
+	NB_PROC=$(shell echo $$((2*$N)))
+endif
 
 all : $(BIN)
 
@@ -20,7 +33,10 @@ all : $(BIN)
 clean :
 	rm -f $(BIN) *.o *~
 
+check:
+	valgrind --leak-check=yes ./$(BIN)
+
 exec :
-	mpirun -n $(NB_PROC) $(RUNFLAG)  ./$(BIN)
+	mpirun -n $(NB_PROC) $(RUNFLAG) $(MAP) ./$(BIN) $(SAMPLE) $(WIDTH) $(HEIGHT)
 
 

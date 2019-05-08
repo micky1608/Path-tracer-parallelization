@@ -379,7 +379,7 @@ void shuffle(int *array, size_t n, int rank)
 int main(int argc, char **argv)
 { 
 	// Mesurer le temps d'execution
-	double clock_begin, clock_end;
+	double clock_begin, clock_end, work_begin, work_end;
 	clock_begin = wtime();
 
 	// Petit cas test (small, quick and dirty):
@@ -401,8 +401,13 @@ int main(int argc, char **argv)
 	int samples = 80;
 	*/
 
-	if (argc == 2) 
-		samples = atoi(argv[1]) / 4;
+	if (argc >= 2) 
+		samples = atoi(argv[1]);
+
+	if(argc >= 4) {
+		w = atoi(argv[2]);
+		h = atoi(argv[3]);
+	}
 
 	static const double CST = 0.5135;  /* ceci défini l'angle de vue */
 	double camera_position[3] = {50, 52, 295.6};
@@ -455,12 +460,12 @@ int main(int argc, char **argv)
 
 
 	if(rank == 0) {
-		printf("h : %d pixels\tw : %d pixels\n",h,w);
-		printf("samples : %d\n",samples);
-		printf("nb pixels : %d\n",w*h);
-		printf("Size block : %d pixels\n",SIZE_BLOCK);
-		printf("nb bloc : %d\n",nb_bloc);
-		printf("Nb process : %d\n",nbProcess);
+		printf("Calcul d'une image de taile %d*%d pixels\n",h,w);
+		printf("Pour chaque pixel : %d échantillons\n",samples);
+		printf("nombre total de pixels : %d\n",w*h);
+		printf("Taille de blocs utilisée : %d pixels\n",SIZE_BLOCK);
+		printf("Nombre total de blocs : %d\n",nb_bloc);
+		printf("Nombre de processus : %d\n",nbProcess);
 	}
 
 	// tampon mémoire pour l'image
@@ -521,7 +526,7 @@ int main(int argc, char **argv)
 
 	MPI_Allgather(&nb_bloc_local , 1 , MPI_INT , nb_bloc_locaux , 1 , MPI_INT , MPI_COMM_WORLD);
 
-	printf("Process %d : work in progress on %s ...\n",rank,hostname);
+	printf("Processus %d : calcul %d blocs sur la machine %s ...\n",rank,nb_bloc_locaux[rank],hostname);
 
 	// definition des indices dans l'image globale
 	int x,y;
@@ -567,7 +572,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-
+	work_begin = wtime();
 	while(process_with_work_counter > 0)
 	{
 		//Boucle de demande de taches
@@ -761,7 +766,14 @@ int main(int argc, char **argv)
 	}
 
 
-	//printf("Runtime execution process %d: %d min %f seconds\n",rank,min,sec);
+	// Affichage du temps de calcul pur pour chaque processus
+	work_end = wtime();
+	double diff_work = (work_end - work_begin);
+	double sec_work;
+	int min_work;
+	min_work = diff_work / 60;
+	sec_work = diff_work - 60*min_work;
+	printf("Temps de calcul pur processus %d: %d min %f seconds\n",rank,min_work,sec_work);
 
 
 	for(int i=0; i<nbProcess;i++) //On fait un wait pour s'assurer que toutes les requetes asynchrones sont finies, au cas où
@@ -857,7 +869,7 @@ int main(int argc, char **argv)
 		mkdir(nom_rep, S_IRWXU);
 		sprintf(nom_sortie, "%s/image.ppm", nom_rep);
 
-		printf("Image saved in '%s'\n",nom_sortie);
+		printf("Image sauvegardé dans '%s'\n",nom_sortie);
 		
 		FILE *f = fopen(nom_sortie, "w");
 		fprintf(f, "P3\n%d %d\n%d\n", w, h, 255); 

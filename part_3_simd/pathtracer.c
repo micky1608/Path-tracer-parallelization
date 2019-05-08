@@ -660,13 +660,13 @@ int main(int argc, char **argv)
 	}
 
 	if(rank == 0) {
-		printf("h : %d pixels\tw : %d pixels\n",h,w);
-		printf("samples : %d\n",samples);
-		printf("nb pixels : %d\n",w*h);
-		printf("Size block : %d pixels\n",SIZE_BLOCK);
-		printf("nb bloc : %d\n",nb_bloc);
-		printf("Nb process : %d\n",nbProcess);
-		printf("Nb thread : %d\n",NBTHREAD);
+		printf("Calcul d'une image de taile %d*%d pixels\n",h,w);
+		printf("Pour chaque pixel : %d échantillons\n",samples);
+		printf("nombre total de pixels : %d\n",w*h);
+		printf("Taille de blocs utilisée : %d pixels\n",SIZE_BLOCK);
+		printf("Nombre total de blocs : %d\n",nb_bloc);
+		printf("Nombre de processus : %d\n",nbProcess);
+		printf("Nombre de threads crée par processus : %d\n",NBTHREAD);
 	}
 
 	// tampon mémoire pour l'image
