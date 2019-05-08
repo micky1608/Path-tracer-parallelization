@@ -6,6 +6,10 @@ LDFLAGS=-lm -fopenmp -mavx2 -march=native
 
 BIN=pathtracer
 
+SAMPLE=50
+WIDTH=320
+HEIGHT=200
+
 all : $(BIN)
 
 % : %.c
@@ -14,6 +18,8 @@ all : $(BIN)
 clean :
 	rm -f $(BIN) *.o *~
 
+check:
+	valgrind --leak-check=yes ./$(BIN)
 
-
-
+exec :
+	./$(BIN) $(SAMPLE) $(WIDTH) $(HEIGHT)

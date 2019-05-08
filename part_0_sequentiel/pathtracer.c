@@ -363,8 +363,13 @@ int main(int argc, char **argv)
 	/* int h = 2160; */
 	/* int samples = 5000;  */
 
-	if (argc == 2) 
-		samples = atoi(argv[1]) / 4;
+	if (argc >= 2) 
+		samples = atoi(argv[1]);
+
+	if(argc >= 4) {
+		w = atoi(argv[2]);
+		h = atoi(argv[3]);
+	}
 
 	static const double CST = 0.5135;  /* ceci défini l'angle de vue */
 	double camera_position[3] = {50, 52, 295.6};
