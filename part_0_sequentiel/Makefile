@@ -2,7 +2,7 @@ CC=gcc -Wall -O3
 
 CFLAGS=-Iinc
 
-LDFLAGS=-lm 
+LDFLAGS=-lm -fopenmp -mavx2 -march=native
 
 BIN=pathtracer
 
