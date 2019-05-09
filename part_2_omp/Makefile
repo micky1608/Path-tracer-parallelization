@@ -1,4 +1,6 @@
 CC=mpicc -Wall -O3 -fopenmp -mavx2 -march=native
+
+#Pour desactiver la vectorisation automatique 
 #CC=mpicc -Wall -O2 -fopenmp -mavx2 -march=native -fgcse-after-reload -finline-functions -fipa-cp-clone -floop-interchange -floop-unroll-and-jam -fpeel-loops -fpredictive-commoning -fsplit-paths -ftree-loop-distribute-patterns -ftree-loop-distribution -ftree-partial-pre -funswitch-loops -fno-tree-vectorize
 
 LDFLAGS=-lm 
