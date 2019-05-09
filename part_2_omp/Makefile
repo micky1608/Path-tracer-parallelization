@@ -1,9 +1,7 @@
-CC=mpicc -Wall -O3
+CC=mpicc -Wall -O3 -fopenmp -mavx2 -march=native
+#CC=mpicc -Wall -O2 -fopenmp -mavx2 -march=native -fgcse-after-reload -finline-functions -fipa-cp-clone -floop-interchange -floop-unroll-and-jam -fpeel-loops -fpredictive-commoning -fsplit-paths -ftree-loop-distribute-patterns -ftree-loop-distribution -ftree-partial-pre -funswitch-loops -fno-tree-vectorize
 
-CFLAGS=-Iinc
-
-LDFLAGS=-lm -fopenmp -mavx2 -march=native
-
+LDFLAGS=-lm 
 BIN=pathtracer
 
 NB_PROC=4
@@ -19,9 +17,9 @@ RUNFLAG=
 MAP=
 
 #si il existe un fichier hostfile
-ifneq ("$(wildcard hostfile)","")
+ifneq ("$(wildcard ${HOST})","")
 	RUNFLAG=-hostfile ${HOST}
-	N=$(shell wc -l hostfile | grep -o -e [0-9]*)
+	N=$(shell wc -l ${HOST} |  grep -o -e [0-9]*)
 	NB_PROC=$(shell echo $$((2*$N)))
 endif
 
