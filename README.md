@@ -15,10 +15,11 @@ Pour lancer une exécution :
 	- SAMPLE : Nombre de samples
 	- WIDTH, HEIGHT : Dimensions de l'image 
 	- HOST : Pour changer le nom du fichier hostfile par défaut. 
-	- MAP : activer l’option “--map-by node” : Procure de meilleurs performances avec les 			versions multi-threading 
+	- MAP : activer l’option “--map-by node” : Procure de meilleurs performances avec les versions multi-threading 
+
 <br/>
 Exemple pour calculer une image 1920*1080 avec 500 échantillons par pixel : <br/>
-`make exec SAMPLE=500 WIDTH=1920 HEIGHT=1080`
+`make exec SAMPLE=500 WIDTH=1920 HEIGHT=1080` <br/>
 Pour lancer une exécution en répartissant au mieux les processus sur les différents noeuds : <br/>
 `make exec MAP="--map-by node"`
 
