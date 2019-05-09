@@ -19,7 +19,7 @@ Pour lancer une exécution :
 
 <br/>
 Exemple pour calculer une image 1920*1080 avec 500 échantillons par pixel : <br/>
-`make exec SAMPLE=500 WIDTH=1920 HEIGHT=1080` <br/>
+```make exec SAMPLE=500 WIDTH=1920 HEIGHT=1080``` <br/>
 Pour lancer une exécution en répartissant au mieux les processus sur les différents noeuds : <br/>
-`make exec MAP="--map-by node"`
+```make exec MAP="--map-by node"```
 
