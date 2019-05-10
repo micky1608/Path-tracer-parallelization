@@ -75,9 +75,14 @@ typedef __m256d avx;
 // dot(a, b)
 static inline double avx_dot(const avx a, const avx b)
 {
-	avx temp;
-	avx_mul(a,b,temp);
-	return avx_extract(temp, 0) + avx_extract(temp, 1) + avx_extract(temp, 2);
+	
+	//avx temp;
+	//avx_mul(a,b,temp);
+	//return avx_extract(temp, 0) + avx_extract(temp, 1) + avx_extract(temp, 2);
+
+	//Version scalaire utilisée ici, parce qu'elle est bien plus rapide
+	const double *da = ((double*)&a), *db = ((double*)&b);
+	return da[0]*db[0] + da[1]*db[1] + da[2]*db[2];
 }
 
 // norm(x)
@@ -89,6 +94,7 @@ static inline double avx_dot(const avx a, const avx b)
 // cross(a,b,c)
 // [c2, c0, c1] = [a0, a1, a2]*[b1, b2, b0] - [b0, b1, b2]*[a1, a2, a0]
 #define avx_cross(a, b, c) (c = _mm256_permute4x64_pd(_mm256_fmsub_pd(a,_mm256_permute4x64_pd(b,201),_mm256_mul_pd(b,_mm256_permute4x64_pd(a,201))),201)) 
+//#define avx_cross(a,b,c) { double *da = ((double*)&a), *db = ((double*)&b); c=_mm256_setr_pd (da[1]*db[2]-db[1]*da[2], da[2]*db[0]-db[2]*da[0], da[0]*db[1]-db[0]*da[1], 0);}
 
 //Copie les 3 plus hauts doubles du registre avx2 à l'emplacement donne
 #define avx_copy3(x, mem) (_mm256_maskstore_pd(mem, _mm256_set_epi64x(0,(__int64_t)0xFFFFFFFFFFFFFFFF,(__int64_t)0xFFFFFFFFFFFFFFFF,(__int64_t)0xFFFFFFFFFFFFFFFF), x)) 
@@ -239,7 +245,7 @@ double avx_sphere_intersect(const struct Sphere *s, avx avx_ray_origin, avx avx_
 	
 	double b = avx_dot(avx_op, avx_ray_direction);
 
-	double discriminant = b * b - avx_dot(avx_op, avx_op) + s->radius * s->radius; 
+	double discriminant = b * b - avx_dot(avx_op, avx_op) + s->radius * s->radius;
 
 	if (discriminant < 0)
 		return 0;   /* pas d'intersection */
@@ -304,8 +310,6 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 
 	avx_copy(avx_x , avx_n);
 
-	//avx avx_pos; 
-	//avx_set(avx_pos,obj->position[0],obj->position[1],obj->position[2]);
 	avx_axpy(-1 , obj->position , avx_n);
 
 	avx_normalize(avx_n);
@@ -320,9 +324,6 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 	
 	/* couleur de la sphere */
 	avx avx_f;
-
-	//avx avx_color; 
-	//avx_set(avx_color,obj->color[0],obj->color[1],obj->color[2]);
 	avx_copy(obj->color , avx_f);
 
 	double p = obj->max_reflexivity;
@@ -335,9 +336,7 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 		if (erand48(PRNG_state) < p) {
 			avx_scal(1/p , avx_f);
 		} else {
-			avx avx_emission;
-			avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);
-			avx_copy(avx_emission , *avx_out);
+			avx_copy(obj->emission , *avx_out);
 
 			return;
 		}
@@ -403,8 +402,6 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 		/* pondère par la couleur de la sphère, prend en compte l'emissivité */
 		avx_mul(avx_f , avx_rec , *avx_out);
 
-		//avx avx_emission;
-		//avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);
 		avx_axpy(1 , obj->emission , *avx_out);
 
 		return;
@@ -429,8 +426,6 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 		/* pondère par la couleur de la sphère, prend en compte l'emissivité */
 		avx_mul(avx_f , avx_rec , *avx_out);
 
-		//avx avx_emission;
-		//avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);
 		avx_axpy(1 , obj->emission , *avx_out);
 
 		return;
@@ -439,12 +434,11 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 	/* cas des surfaces diélectriques (==verre). Combinaison de réflection et de réfraction. */
 	//bool into = dot(n, nl) > 0;      /* vient-il de l'extérieur ? */
 	bool into = avx_dot(avx_n , avx_nl) > 0;
+	double ddn = avx_dot(avx_ray_direction , avx_nl);
 
 	double nc = 1;                   /* indice de réfraction de l'air */
 	double nt = 1.5;                 /* indice de réfraction du verre */
 	double nnt = into ? (nc / nt) : (nt / nc);
-	
-	double ddn = avx_dot(avx_ray_direction , avx_nl);
 	
 	/* si le rayon essaye de sortir de l'objet en verre avec un angle incident trop faible,
 	   il rebondit entièrement */
@@ -457,8 +451,6 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 
 		avx_mul(avx_f , avx_rec , *avx_out);
 
-		//avx avx_emission;
-		//avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);		
 		avx_axpy(1 , obj->emission , *avx_out);
 
 		return;
@@ -521,8 +513,6 @@ void avx_radiance(avx avx_ray_origin, avx avx_ray_direction, int depth, unsigned
 	/* pondère, prend en compte la luminance */
 	avx_mul(avx_f , avx_rec , *avx_out);
 
-	//avx avx_emission;
-	//avx_set(avx_emission,obj->emission[0],obj->emission[1],obj->emission[2]);
 	avx_axpy(1 , obj->emission , *avx_out);
 
 	return;
@@ -914,8 +904,6 @@ int main(int argc, char **argv)
 								avx_normalize(avx_ray_direction);
 								
 								avx avx_ray_origin;
-
-								avx_zero(avx_ray_origin);
 
 								avx_copy(avx_camera_position , avx_ray_origin);
 
