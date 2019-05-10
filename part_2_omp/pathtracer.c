@@ -583,12 +583,12 @@ int main(int argc, char **argv)
 	}
 
 	work_begin = wtime();
-	while(process_with_work_counter > 0)
+	while(process_with_work_counter > 0 || nbProcess==1)
 	{
 		//Boucle de demande de taches
 		if(!processing_local_blocs)
 		{
-			while(1)
+			while(nbProcess != 1)
 			{
 				if(other_process_hasWork[other_process_offset] == 1) //Si on n'a pas reçu de NOPE de ce processus
 				{
@@ -625,7 +625,7 @@ int main(int argc, char **argv)
 			}
 		}
 
-		if(process_with_work_counter == 0)
+		if((process_with_work_counter == 0 && nbProcess != 1) || (nbProcess==1 && !processing_local_blocs))
 		{
 			break;
 		}
