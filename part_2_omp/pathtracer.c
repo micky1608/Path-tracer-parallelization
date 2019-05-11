@@ -687,7 +687,7 @@ int main(int argc, char **argv)
 
 		
 			// pour chaque pixel de son bloc de données
-			#pragma omp parallel for private(x,y)
+			#pragma omp parallel for private(x,y) schedule(dynamic,1)
 			for(int k=b*SIZE_BLOCK ; k<(b+1)*SIZE_BLOCK ; k++) {
 				
 				// calcul des indices globaux x et y
