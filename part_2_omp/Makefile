@@ -6,7 +6,7 @@ CC=mpicc -Wall -O3 -fopenmp -mavx2 -march=native
 LDFLAGS=-lm 
 BIN=pathtracer
 
-NB_PROC=4
+NB_PROC=2
 
 SAMPLE=50
 WIDTH=320
